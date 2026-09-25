@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Barcode Tracker",
+    "slug": "barcode-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Esta app requiere acceso a la cámara para escanear códigos de barras de productos en tienda.",
+        "NSPhotoLibraryUsageDescription": "Esta app requiere acceso a la galería para detectar códigos de barras en fotografías guardadas."
+      }
+    },
+    "android": {
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permite escanear códigos de barras de productos físicos en tiendas."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permite seleccionar fotos de etiquetas para extraer códigos de barras."
+        }
+      ]
+    ]
+  }
+}

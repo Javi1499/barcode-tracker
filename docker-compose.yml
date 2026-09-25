@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: deal_hunter_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: deal_hunter
+    ports:
+      - "5433:5432"
+    volumes:
+      - deal_hunter_pgdata:/var/lib/postgresql/data
+
+volumes:
+  deal_hunter_pgdata:

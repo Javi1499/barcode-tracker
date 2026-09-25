@@ -1,0 +1,128 @@
+// Prisma schema para Barcode Deal Hunter (Tracker Colaborativo de Liquidaciones)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PriceType {
+  REGULAR            // Precio normal sin oferta
+  PROMOTION          // Promoción temporal (ej. 2x1, 15% descuento)
+  LIQUIDATION_FIRST  // Primera liquidación (típico .03 en autoservicios)
+  LIQUIDATION_SECOND // Segunda liquidación (típico .02)
+  LIQUIDATION_FINAL  // Liquidación final / remate máximo (típico .01)
+  UNKNOWN
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  username     String        @unique
+  name         String?
+  avatarUrl    String?
+  reputation   Int           @default(0) // Puntos por registrar ofertas verídicas
+  authProvider String?       // 'google' | 'facebook' | 'apple'
+  providerId   String?       // ID externo de OAuth
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  priceEntries PriceEntry[]
+  votes        CommunityVote[]
+
+  @@map("users")
+}
+
+model Product {
+  id           String        @id @default(uuid())
+  barcode      String        @unique // Código EAN-13, UPC-A, etc.
+  name         String
+  brand        String?
+  category     String?       // Electrónica, Juguetería, Alimentos, etc.
+  description  String?
+  imageUrl     String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relación 1 a N inmutable: Cada nuevo reporte de precio es una fila separada en el historial
+  priceEntries PriceEntry[]
+
+  @@index([barcode])
+  @@index([name])
+  @@map("products")
+}
+
+model Store {
+  id           String        @id @default(uuid())
+  name         String        // Ej: Walmart, Bodega Aurrera, Soriana Híper, Chedraui
+  branch       String        // Sucursal específica (ej. "Plaza Tepeyac", "Insurgentes Sur")
+  city         String?
+  state        String?
+  latitude     Float?
+  longitude    Float?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  priceEntries PriceEntry[]
+
+  @@unique([name, branch], name: "store_branch_unique")
+  @@index([name])
+  @@map("stores")
+}
+
+model PriceEntry {
+  id              String         @id @default(uuid())
+  
+  // Relación con Producto
+  productId       String
+  product         Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Usuario que cazó y registró la oferta
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Tienda y sucursal física donde fue avistado
+  storeId         String
+  store           Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  // Métricas financieras del avistamiento
+  reportedPrice   Decimal        @db.Decimal(10, 2) // Precio de liquidación o actual registrado
+  originalPrice   Decimal?       @db.Decimal(10, 2) // Precio normal / original tachado
+  discountPercent Float?         // % de ahorro calculado contra originalPrice o precio anterior
+  priceType       PriceType      @default(LIQUIDATION_FINAL)
+
+  // Información de stock y verificación visual
+  inStock         Boolean        @default(true)
+  stockEstimate   Int?           // Ej: 1 o 2 unidades en anaquel
+  photoProofUrl   String?        // Fotografía de la etiqueta física como evidencia
+  notes           String?        // Ej: "Encontrado en pasillo de liquidaciones al fondo"
+
+  // Marca de tiempo automática esencial para la línea temporal / gráfica histórica
+  createdAt       DateTime       @default(now())
+
+  // Validación comunitaria (Confirmaciones de que sigue disponible)
+  votes           CommunityVote[]
+
+  @@index([productId, createdAt(sort: Desc)])
+  @@index([storeId])
+  @@index([userId])
+  @@map("price_entries")
+}
+
+model CommunityVote {
+  id           String      @id @default(uuid())
+  priceEntryId String
+  priceEntry   PriceEntry  @relation(fields: [priceEntryId], references: [id], onDelete: Cascade)
+
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  isStillThere Boolean     @default(true) // true = "Aún hay stock a ese precio", false = "Ya se agotó / cambió"
+  createdAt    DateTime    @default(now())
+
+  @@unique([priceEntryId, userId])
+  @@map("community_votes")
+}
