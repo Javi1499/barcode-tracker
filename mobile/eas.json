@@ -14,7 +14,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.tu-servidor-produccion.com/api"
+        "EXPO_PUBLIC_API_URL": "https://barcode-tracker-production.up.railway.app/api"
       }
     },
     "production": {
@@ -26,7 +26,7 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.tu-servidor-produccion.com/api"
+        "EXPO_PUBLIC_API_URL": "https://barcode-tracker-production.up.railway.app/api"
       }
     }
   },

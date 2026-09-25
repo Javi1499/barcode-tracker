@@ -5,7 +5,7 @@ import {
 } from '../types';
 
 // Configuración dinámica de API (EAS Build o desarrollo local)
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://barcode-tracker-production.up.railway.app/api';
 
 export const api = {
   /**
