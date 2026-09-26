@@ -34,16 +34,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setSelectedProvider(provider);
 
     try {
-      let userData: { name?: string; email?: string } | undefined;
-
-      if (customMode && customEmail.trim()) {
-        userData = {
-          name: customName.trim() || undefined,
-          email: customEmail.trim()
-        };
-      }
-
-      const user = await AuthService.loginWithSocial(provider, userData);
+      const user = await AuthService.loginWithSocial(provider);
       Alert.alert(
         '¡Bienvenido Cazador!',
         `Has iniciado sesión como @${user.username} mediante ${provider.toUpperCase()}. Tienes ${user.reputation} puntos de reputación iniciales.`
@@ -58,6 +49,31 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     } finally {
       setLoading(false);
       setSelectedProvider(null);
+    }
+  };
+
+  const handleEmailLogin = async () => {
+    if (!customEmail.trim() || !customEmail.includes('@')) {
+      Alert.alert('Correo Requerido', 'Por favor ingresa un correo electrónico válido para registrar tu cuenta.');
+      return;
+    }
+
+    setLoading(true);
+    setSelectedProvider(null);
+
+    try {
+      const user = await AuthService.loginWithEmail(customEmail, customName);
+      Alert.alert(
+        '¡Bienvenido Cazador!',
+        `Has iniciado sesión como @${user.username}. Tienes ${user.reputation} puntos de reputación iniciales.`
+      );
+      onLoginSuccess(user);
+      onClose();
+    } catch (err: any) {
+      console.error('Error al iniciar sesión con correo:', err);
+      Alert.alert('Error de Registro', err.message || 'No se pudo conectar con el servidor.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -131,42 +147,43 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <Text style={styles.facebookBtnText}>Continuar con Facebook</Text>
                 </TouchableOpacity>
 
-                {/* Opción de personalizar email / nombre */}
-                <TouchableOpacity
-                  style={styles.customToggle}
-                  onPress={() => setCustomMode(prev => !prev)}
-                >
-                  <Text style={styles.customToggleText}>
-                    {customMode ? '▼ Usar inicio de sesión rápido en 1-tap' : '▶ Personalizar nombre y correo para la cuenta'}
-                  </Text>
-                </TouchableOpacity>
+                {/* Divisor */}
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>O REGÍSTRATE CON TU CORREO</Text>
+                  <View style={styles.dividerLine} />
+                </View>
 
-                {customMode && (
-                  <View style={styles.customInputsCard}>
-                    <Text style={styles.customLabel}>Tu Nombre (Opcional):</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Ej. Javier Cazador"
-                      placeholderTextColor="#64748b"
-                      value={customName}
-                      onChangeText={setCustomName}
-                    />
+                {/* Formulario de registro/login directo con correo */}
+                <View style={styles.customInputsCard}>
+                  <Text style={styles.customLabel}>Tu Nombre o Alias (Opcional):</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ej. Javier"
+                    placeholderTextColor="#64748b"
+                    value={customName}
+                    onChangeText={setCustomName}
+                  />
 
-                    <Text style={styles.customLabel}>Tu Correo Electrónico:</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="ejemplo@correo.com"
-                      placeholderTextColor="#64748b"
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      value={customEmail}
-                      onChangeText={setCustomEmail}
-                    />
-                    <Text style={styles.customHint}>
-                      Al pulsar cualquiera de los botones de arriba, tu cuenta se creará o vinculará con estos datos.
-                    </Text>
-                  </View>
-                )}
+                  <Text style={styles.customLabel}>Tu Correo Electrónico *:</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="ejemplo@correo.com"
+                    placeholderTextColor="#64748b"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={customEmail}
+                    onChangeText={setCustomEmail}
+                  />
+
+                  <TouchableOpacity
+                    style={styles.emailSubmitBtn}
+                    onPress={handleEmailLogin}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.emailSubmitBtnText}>⚡ Entrar / Crear Cuenta con Correo</Text>
+                  </TouchableOpacity>
+                </View>
 
                 {/* Continuar como invitado */}
                 <TouchableOpacity style={styles.guestBtn} onPress={onClose}>
@@ -403,5 +420,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: 'center',
     lineHeight: 16
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 12,
+    gap: 8
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#334155'
+  },
+  dividerText: {
+    color: '#64748b',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5
+  },
+  emailSubmitBtn: {
+    backgroundColor: '#0284c7',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10
+  },
+  emailSubmitBtnText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 14
   }
 });

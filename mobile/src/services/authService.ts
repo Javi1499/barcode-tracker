@@ -93,6 +93,28 @@ export const AuthService = {
   },
 
   /**
+   * Registro e inicio de sesión directo con correo electrónico y nombre
+   */
+  async loginWithEmail(email: string, name?: string): Promise<UserProfile> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new Error('Por favor ingresa un correo electrónico válido.');
+    }
+
+    const payload = {
+      provider: 'google' as const,
+      providerId: `email_${cleanEmail}`,
+      email: cleanEmail,
+      name: name?.trim() || cleanEmail.split('@')[0],
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/png?seed=${encodeURIComponent(cleanEmail)}`
+    };
+
+    const user = await api.socialLogin(payload);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    return user;
+  },
+
+  /**
    * Inicia sesión o registra al usuario con Google, Facebook o Apple
    * usando flujos reales de OAuth 2.0 mediante WebBrowser y AuthSession
    */
@@ -106,19 +128,30 @@ export const AuthService = {
   ): Promise<UserProfile> {
     // Si el usuario especificó datos directos (ej. modo personalizado manual)
     if (userData?.email) {
-      const payload = {
-        provider,
-        providerId: `${provider}_${Date.now().toString().slice(-6)}`,
-        email: userData.email.trim().toLowerCase(),
-        name: userData.name?.trim() || `Cazador ${provider.toUpperCase()}`,
-        avatarUrl:
-          userData.avatarUrl ||
-          `https://api.dicebear.com/7.x/bottts/png?seed=${encodeURIComponent(userData.email)}`
-      };
+      return this.loginWithEmail(userData.email, userData.name);
+    }
 
-      const user = await api.socialLogin(payload);
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-      return user;
+    const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+    const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID;
+    const appleClientId = process.env.EXPO_PUBLIC_APPLE_CLIENT_ID;
+
+    // Si aún no se han configurado los Client IDs en eas.json
+    if (provider === 'google' && !googleClientId) {
+      throw new Error(
+        'Falta configurar EXPO_PUBLIC_GOOGLE_CLIENT_ID en eas.json con tu ID de Google Cloud Console. Puedes usar la opción de abajo "Entrar con Correo" para ingresar de inmediato.'
+      );
+    }
+
+    if (provider === 'facebook' && !facebookAppId) {
+      throw new Error(
+        'Falta configurar EXPO_PUBLIC_FACEBOOK_APP_ID en eas.json con tu App ID de Meta for Developers. Puedes usar la opción de abajo "Entrar con Correo" para ingresar de inmediato.'
+      );
+    }
+
+    if (provider === 'apple' && !appleClientId) {
+      throw new Error(
+        'Falta configurar EXPO_PUBLIC_APPLE_CLIENT_ID en eas.json con tu Services ID de Apple Developer. Puedes usar la opción de abajo "Entrar con Correo" para ingresar de inmediato.'
+      );
     }
 
     // 1. Configurar URI de retorno de OAuth compatible con Expo y App instalada
@@ -127,11 +160,6 @@ export const AuthService = {
     });
 
     let authUrl = '';
-    const googleClientId =
-      process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
-      '679803135099-mockgoogleclient.apps.googleusercontent.com';
-    const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID || '104820194829104';
-    const appleClientId = process.env.EXPO_PUBLIC_APPLE_CLIENT_ID || 'com.javi1499.barcodetracker';
 
     if (provider === 'google') {
       const nonce = Math.random().toString(36).substring(2);
