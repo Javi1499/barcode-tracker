@@ -1,5 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import { api } from './api';
+
+// Completar sesión de navegador si la app regresa de un redirect de OAuth
+WebBrowser.maybeCompleteAuthSession();
 
 export interface UserProfile {
   id: string;
@@ -13,6 +18,52 @@ export interface UserProfile {
 }
 
 const STORAGE_KEY = '@barcode_tracker_user';
+
+/**
+ * Decodificador seguro de JWT payload para extraer email/nombre sin dependencias externas
+ */
+function decodeJwtPayload(token: string): any {
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+    let str = '';
+    for (
+      let bc = 0, bs = 0, buffer: any, idx = 0;
+      (buffer = base64.charAt(idx++));
+      ~buffer && ((bs = bc % 4 ? bs * 64 + buffer : buffer), bc++ % 4)
+        ? (str += String.fromCharCode(255 & (bs >> ((-2 * bc) & 6))))
+        : 0
+    ) {
+      buffer = chars.indexOf(buffer);
+    }
+    return JSON.parse(str);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Extrae parámetros tanto del hash fragment (#) como del query string (?)
+ */
+function extractParams(url: string): Record<string, string> {
+  const params: Record<string, string> = {};
+  const queryPart = url.includes('?') ? url.split('?')[1].split('#')[0] : '';
+  const hashPart = url.includes('#') ? url.split('#')[1] : '';
+  const combined = [queryPart, hashPart].filter(Boolean).join('&');
+
+  if (!combined) return params;
+
+  combined.split('&').forEach(item => {
+    const [key, value] = item.split('=');
+    if (key && value) {
+      params[decodeURIComponent(key)] = decodeURIComponent(value);
+    }
+  });
+
+  return params;
+}
 
 export const AuthService = {
   /**
@@ -43,6 +94,7 @@ export const AuthService = {
 
   /**
    * Inicia sesión o registra al usuario con Google, Facebook o Apple
+   * usando flujos reales de OAuth 2.0 mediante WebBrowser y AuthSession
    */
   async loginWithSocial(
     provider: 'google' | 'facebook' | 'apple',
@@ -52,43 +104,142 @@ export const AuthService = {
       avatarUrl?: string;
     }
   ): Promise<UserProfile> {
-    // Si no se proporcionaron datos específicos (ej. One-Tap directo),
-    // se crea la identidad correspondiente al proveedor seleccionado.
-    let providerId = `${provider}_${Date.now().toString().slice(-6)}`;
-    let email = userData?.email;
-    let name = userData?.name;
-    let avatarUrl = userData?.avatarUrl;
+    // Si el usuario especificó datos directos (ej. modo personalizado manual)
+    if (userData?.email) {
+      const payload = {
+        provider,
+        providerId: `${provider}_${Date.now().toString().slice(-6)}`,
+        email: userData.email.trim().toLowerCase(),
+        name: userData.name?.trim() || `Cazador ${provider.toUpperCase()}`,
+        avatarUrl:
+          userData.avatarUrl ||
+          `https://api.dicebear.com/7.x/bottts/png?seed=${encodeURIComponent(userData.email)}`
+      };
 
-    if (!email) {
-      switch (provider) {
-        case 'google':
-          email = 'cazador.google@gmail.com';
-          name = name || 'Cazador Google';
-          avatarUrl = avatarUrl || 'https://lh3.googleusercontent.com/a/default-user';
-          break;
-        case 'facebook':
-          email = 'cazador.fb@facebook.com';
-          name = name || 'Cazador Facebook';
-          avatarUrl = avatarUrl || 'https://graph.facebook.com/v12.0/default/picture';
-          break;
-        case 'apple':
-          email = 'cazador.apple@privaterelay.appleid.com';
-          name = name || 'Cazador Apple';
-          avatarUrl = avatarUrl || 'https://appleid.apple.com/static/bin/cb/avatar.png';
-          break;
+      const user = await api.socialLogin(payload);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      return user;
+    }
+
+    // 1. Configurar URI de retorno de OAuth compatible con Expo y App instalada
+    const redirectUri = AuthSession.makeRedirectUri({
+      scheme: 'barcodetracker'
+    });
+
+    let authUrl = '';
+    const googleClientId =
+      process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
+      '679803135099-mockgoogleclient.apps.googleusercontent.com';
+    const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID || '104820194829104';
+    const appleClientId = process.env.EXPO_PUBLIC_APPLE_CLIENT_ID || 'com.javi1499.barcodetracker';
+
+    if (provider === 'google') {
+      const nonce = Math.random().toString(36).substring(2);
+      authUrl =
+        `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${encodeURIComponent(googleClientId)}&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `response_type=token%20id_token&` +
+        `scope=${encodeURIComponent('openid email profile')}&` +
+        `nonce=${encodeURIComponent(nonce)}&` +
+        `prompt=select_account`;
+    } else if (provider === 'facebook') {
+      authUrl =
+        `https://www.facebook.com/v12.0/dialog/oauth?` +
+        `client_id=${encodeURIComponent(facebookAppId)}&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `response_type=token&` +
+        `scope=${encodeURIComponent('email,public_profile')}`;
+    } else if (provider === 'apple') {
+      authUrl =
+        `https://appleid.apple.com/auth/authorize?` +
+        `client_id=${encodeURIComponent(appleClientId)}&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `response_type=code%20id_token&` +
+        `scope=name%20email&` +
+        `response_mode=fragment`;
+    }
+
+    // 2. Abrir la ventana real de autenticación de terceros en el navegador seguro
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
+
+    if (result.type === 'cancel' || result.type === 'dismiss') {
+      throw new Error('Inicio de sesión cancelado.');
+    }
+
+    let fetchedEmail: string | undefined;
+    let fetchedName: string | undefined;
+    let fetchedAvatar: string | undefined;
+    let fetchedProviderId: string | undefined;
+
+    if (result.type === 'success' && result.url) {
+      const params = extractParams(result.url);
+      const accessToken = params['access_token'];
+      const idToken = params['id_token'];
+
+      // Consulta de perfil según el proveedor con el token recibido
+      if (provider === 'google' && accessToken) {
+        try {
+          const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          });
+          if (profileRes.ok) {
+            const profile = await profileRes.json();
+            fetchedEmail = profile.email;
+            fetchedName = profile.name;
+            fetchedAvatar = profile.picture;
+            fetchedProviderId = profile.sub;
+          }
+        } catch (err) {
+          console.warn('Error al consultar perfil de Google:', err);
+        }
+      } else if (provider === 'facebook' && accessToken) {
+        try {
+          const fbRes = await fetch(
+            `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
+          );
+          if (fbRes.ok) {
+            const fbData = await fbRes.json();
+            fetchedEmail = fbData.email || `${fbData.id}@facebook.com`;
+            fetchedName = fbData.name;
+            fetchedAvatar = fbData.picture?.data?.url;
+            fetchedProviderId = fbData.id;
+          }
+        } catch (err) {
+          console.warn('Error al consultar perfil de Facebook:', err);
+        }
+      }
+
+      // Si no se obtuvo del endpoint o es Apple, decodificar el ID Token JWT
+      if (!fetchedEmail && idToken) {
+        const decoded = decodeJwtPayload(idToken);
+        if (decoded) {
+          fetchedEmail = decoded.email;
+          fetchedName = decoded.name;
+          fetchedAvatar = decoded.picture;
+          fetchedProviderId = decoded.sub;
+        }
       }
     }
 
-    const payload = {
-      provider,
-      providerId,
-      email,
-      name: name || `Cazador ${provider.toUpperCase()}`,
-      avatarUrl
-    };
+    // Si se obtuvieron las credenciales reales del usuario desde el flujo OAuth
+    if (fetchedEmail) {
+      const payload = {
+        provider,
+        providerId: fetchedProviderId || `${provider}_${Date.now()}`,
+        email: fetchedEmail.toLowerCase(),
+        name: fetchedName || `Cazador ${provider.toUpperCase()}`,
+        avatarUrl: fetchedAvatar
+      };
 
-    const user = await api.socialLogin(payload);
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    return user;
+      const user = await api.socialLogin(payload);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      return user;
+    }
+
+    // Si el proveedor no regresó datos o se requiere configurar Client IDs personalizados
+    throw new Error(
+      `No se pudo completar el flujo OAuth con ${provider.toUpperCase()}. Si necesitas configurar tu Client ID de OAuth en producción, puedes especificarlo o usar la opción "Personalizar nombre y correo".`
+    );
   }
 };

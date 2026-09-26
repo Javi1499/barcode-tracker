@@ -23,13 +23,12 @@ const recordPriceSchema = z.object({
   stockEstimate: z.number().int().nonnegative().optional(),
   notes: z.string().max(500).optional(),
   photoProofUrl: z.string().url().optional(),
-  userId: z.string().uuid('ID de usuario inválido')
+  userId: z.string({ required_error: 'El ID de usuario es obligatorio para registrar aportes' }).min(1, 'El ID de usuario es requerido')
 });
 
 /**
  * Registra un nuevo avistamiento de precio para un producto (nuevo o existente).
- * Garantiza inmutabilidad histórica: CADA avistamiento genera un nuevo registro en PriceEntry,
- * calculando comparativas contra el precio anterior y el mínimo histórico sin sobrescribir nada.
+ * Requiere que el usuario esté autenticado para atribuirle la autoría y reputación comunitaria.
  */
 export async function addPriceEntry(req: Request, res: Response) {
   try {
@@ -50,6 +49,18 @@ export async function addPriceEntry(req: Request, res: Response) {
       photoProofUrl,
       userId
     } = validatedData;
+
+    // Verificar que el usuario exista en la BD (debe estar registrado/autenticado)
+    const userRecord = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!userRecord) {
+      return res.status(401).json({
+        success: false,
+        message: 'Debes iniciar sesión con una cuenta registrada para poder agregar o compartir productos y liquidaciones.'
+      });
+    }
 
     // 1. Buscar o registrar la tienda física y sucursal
     const store = await prisma.store.upsert({
@@ -119,7 +130,7 @@ export async function addPriceEntry(req: Request, res: Response) {
     const newPriceEntry = await prisma.priceEntry.create({
       data: {
         productId: product.id,
-        userId,
+        userId: userRecord.id,
         storeId: store.id,
         reportedPrice,
         originalPrice: originalPrice ?? (previousEntry ? previousEntry.reportedPrice : null),
@@ -139,6 +150,12 @@ export async function addPriceEntry(req: Request, res: Response) {
           }
         }
       }
+    });
+
+    // 4.1. Asignar puntos de reputación al usuario que registró la oferta
+    await prisma.user.update({
+      where: { id: userRecord.id },
+      data: { reputation: { increment: 10 } }
     });
 
     // 5. Análisis de variación para feedback inmediato al usuario

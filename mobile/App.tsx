@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, StatusBar } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, StatusBar, Alert } from 'react-native';
 import { ScannerScreen } from './src/screens/ScannerScreen';
 import { ProductPriceHistoryScreen } from './src/screens/ProductPriceHistoryScreen';
 import { AddPriceEntryScreen } from './src/screens/AddPriceEntryScreen';
@@ -31,7 +31,17 @@ export default function App() {
   const handleBarcodeDetected = (barcode: string, lookupData?: any) => {
     setActiveBarcode(barcode);
     setBarcodeLookupData(lookupData);
-    // Si ya existe y el usuario quiere ver el historial o agregar precio
+    if (!currentUser) {
+      Alert.alert(
+        'Cuenta Requerida',
+        'Para agregar un producto o compartir una liquidación necesitas iniciar sesión, ya que los aportes y reputación se asignan a tu cuenta.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Iniciar Sesión', onPress: () => setLoginModalVisible(true) }
+        ]
+      );
+      return;
+    }
     setCurrentScreen('ADD_PRICE');
   };
 
@@ -89,7 +99,20 @@ export default function App() {
         {currentScreen === 'HISTORY' && (
           <ProductPriceHistoryScreen
             barcode={activeBarcode}
-            onAddNewPrice={() => setCurrentScreen('ADD_PRICE')}
+            onAddNewPrice={() => {
+              if (!currentUser) {
+                Alert.alert(
+                  'Cuenta Requerida',
+                  'Para registrar un nuevo precio en el historial debes iniciar sesión con tu cuenta.',
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Iniciar Sesión', onPress: () => setLoginModalVisible(true) }
+                  ]
+                );
+                return;
+              }
+              setCurrentScreen('ADD_PRICE');
+            }}
             onBack={() => setCurrentScreen('SCANNER')}
           />
         )}
@@ -99,6 +122,7 @@ export default function App() {
             barcode={activeBarcode}
             initialData={barcodeLookupData}
             currentUserId={currentUser?.id}
+            onRequestLogin={() => setLoginModalVisible(true)}
             onSuccess={() => setCurrentScreen('HISTORY')}
             onCancel={() => setCurrentScreen('SCANNER')}
           />

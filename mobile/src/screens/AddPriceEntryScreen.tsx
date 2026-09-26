@@ -18,6 +18,7 @@ interface AddPriceEntryScreenProps {
   currentUserId?: string;
   onSuccess: () => void;
   onCancel: () => void;
+  onRequestLogin?: () => void;
 }
 
 export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
@@ -25,7 +26,8 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
   initialData,
   currentUserId,
   onSuccess,
-  onCancel
+  onCancel,
+  onRequestLogin
 }) => {
   const isExisting = Boolean(initialData?.product);
 
@@ -43,6 +45,24 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
+    // Validar que el usuario esté autenticado para registrar/compartir
+    if (!currentUserId) {
+      Alert.alert(
+        'Cuenta Requerida',
+        'Para registrar o compartir un nuevo producto o liquidación en la comunidad, necesitas iniciar sesión.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Iniciar Sesión',
+            onPress: () => {
+              if (onRequestLogin) onRequestLogin();
+            }
+          }
+        ]
+      );
+      return;
+    }
+
     if (!isExisting && !productName.trim()) {
       Alert.alert('Faltan Datos', 'Por favor ingresa el nombre del producto.');
       return;
@@ -61,9 +81,6 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
 
     setLoading(true);
     try {
-      // Usar usuario autenticado o demo si es invitado
-      const userIdToUse = currentUserId || '00000000-0000-0000-0000-000000000001';
-
       const response = await api.addPriceEntry({
         barcode,
         productName: isExisting ? undefined : productName.trim(),
@@ -73,7 +90,7 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
         storeBranch: storeBranch.trim(),
         priceType,
         notes: notes.trim() || undefined,
-        userId: userIdToUse
+        userId: currentUserId
       });
 
       Alert.alert(
@@ -100,6 +117,23 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
           {isExisting ? 'Actualizar Precio de Liquidación' : 'Registrar Nuevo Producto'}
         </Text>
         <Text style={styles.barcodeLabel}>Código: {barcode}</Text>
+
+        {/* Banner de inicio de sesión obligatorio */}
+        {!currentUserId && (
+          <TouchableOpacity
+            style={styles.guestWarningCard}
+            onPress={onRequestLogin}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.guestWarningIcon}>🔒</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guestWarningTitle}>Inicio de Sesión Requerido</Text>
+              <Text style={styles.guestWarningSubtitle}>
+                Los productos y liquidaciones se asignan a tu perfil de cazador (+10 pts). Toca aquí para iniciar sesión.
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* Notificación si ya existía en la base de datos */}
         {isExisting && initialData.latestPriceEntry && (
@@ -233,15 +267,19 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
 
         {/* Botón de Enviar */}
         <TouchableOpacity
-          style={styles.submitBtn}
-          onPress={handleSubmit}
+          style={[styles.submitBtn, !currentUserId && styles.submitBtnLocked]}
+          onPress={currentUserId ? handleSubmit : (onRequestLogin || handleSubmit)}
           disabled={loading}
         >
           {loading ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
             <Text style={styles.submitBtnText}>
-              {isExisting ? 'Guardar Nuevo Precio en Historial' : 'Crear Producto y Guardar Precio'}
+              {!currentUserId
+                ? '🔒 Iniciar Sesión para Registrar'
+                : isExisting
+                ? 'Guardar Nuevo Precio en Historial'
+                : 'Crear Producto y Guardar Precio'}
             </Text>
           )}
         </TouchableOpacity>
@@ -386,9 +424,39 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 30
   },
+  submitBtnLocked: {
+    backgroundColor: '#334155',
+    borderColor: '#475569',
+    borderWidth: 1
+  },
   submitBtnText: {
     color: '#ffffff',
     fontWeight: '800',
     fontSize: 16
+  },
+  guestWarningCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(234, 179, 8, 0.12)',
+    borderWidth: 1,
+    borderColor: '#eab308',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    gap: 12
+  },
+  guestWarningIcon: {
+    fontSize: 24
+  },
+  guestWarningTitle: {
+    color: '#facc15',
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 2
+  },
+  guestWarningSubtitle: {
+    color: '#fde047',
+    fontSize: 12.5,
+    lineHeight: 17
   }
 });

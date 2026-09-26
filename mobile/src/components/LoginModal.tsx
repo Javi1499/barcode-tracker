@@ -51,8 +51,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       onLoginSuccess(user);
       onClose();
     } catch (err: any) {
-      console.error('Error al iniciar sesión:', err);
-      Alert.alert('Error de Autenticación', err.message || 'No se pudo conectar con el proveedor.');
+      if (err.message !== 'Inicio de sesión cancelado.') {
+        console.error('Error al iniciar sesión:', err);
+        Alert.alert('Autenticación', err.message || 'No se pudo conectar con el proveedor.');
+      }
     } finally {
       setLoading(false);
       setSelectedProvider(null);

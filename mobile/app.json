@@ -2,6 +2,7 @@
   "expo": {
     "name": "Barcode Tracker",
     "slug": "barcode-tracker",
+    "scheme": "barcodetracker",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -14,10 +15,13 @@
     },
     "android": {
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
-      ]
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.javi_1499.barcodetracker"
     },
     "plugins": [
       [
@@ -31,7 +35,13 @@
         {
           "photosPermission": "Permite seleccionar fotos de etiquetas para extraer códigos de barras."
         }
-      ]
-    ]
+      ],
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7d13f6be-853b-42d9-bc05-16f9d5c286f8"
+      }
+    }
   }
 }
