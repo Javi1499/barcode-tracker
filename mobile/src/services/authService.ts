@@ -154,10 +154,17 @@ export const AuthService = {
       );
     }
 
-    // 1. Configurar URI de retorno de OAuth compatible con Expo y App instalada
-    const redirectUri = AuthSession.makeRedirectUri({
-      scheme: 'barcodetracker'
-    });
+    // 1. Configurar URI de retorno de OAuth compatible con las políticas de Google y Meta
+    // Google prohíbe esquemas personalizados (barcodetracker://) en Web Client IDs y exige HTTPS.
+    // Usamos el proxy oficial de Expo para redirección segura.
+    const googleRedirectUri =
+      process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI ||
+      'https://auth.expo.io/@javi_1499/barcode-tracker';
+
+    const redirectUri =
+      provider === 'google'
+        ? googleRedirectUri
+        : AuthSession.makeRedirectUri({ scheme: 'barcodetracker' });
 
     let authUrl = '';
 
