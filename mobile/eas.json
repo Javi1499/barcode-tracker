@@ -14,7 +14,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://barcode-tracker-production.up.railway.app/api"
+        "EXPO_PUBLIC_API_URL": "https://barcode-tracker-production.up.railway.app/api",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "604601654566-kc4kt8et7k3ba6vkjr29630bvdivhmm2.apps.googleusercontent.com"
       }
     },
     "production": {
@@ -26,7 +27,8 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://barcode-tracker-production.up.railway.app/api"
+        "EXPO_PUBLIC_API_URL": "https://barcode-tracker-production.up.railway.app/api",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "604601654566-kc4kt8et7k3ba6vkjr29630bvdivhmm2.apps.googleusercontent.com"
       }
     }
   },
