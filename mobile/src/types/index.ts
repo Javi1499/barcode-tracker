@@ -35,6 +35,9 @@ export interface ProductDetails {
   name: string;
   brand?: string;
   category?: string;
+  workingVotesCount?: number;
+  brokenReportsCount?: number;
+  isReportedBroken?: boolean;
 }
 
 export interface ProductPriceHistoryResponse {
@@ -45,6 +48,9 @@ export interface ProductPriceHistoryResponse {
     lowestPrice: number | null;
     highestPrice: number | null;
     isAtAllTimeLow: boolean;
+    workingVotesCount?: number;
+    brokenReportsCount?: number;
+    isReportedBroken?: boolean;
   };
   history: PriceEntry[];
 }
@@ -52,8 +58,14 @@ export interface ProductPriceHistoryResponse {
 export interface BarcodeLookupResponse {
   exists: boolean;
   barcode: string;
+  workingVotesCount?: number;
+  brokenReportsCount?: number;
+  isReportedBroken?: boolean;
   data?: {
     product: ProductDetails;
+    workingVotesCount?: number;
+    brokenReportsCount?: number;
+    isReportedBroken?: boolean;
     latestPriceEntry: {
       price: number;
       originalPrice?: number | null;

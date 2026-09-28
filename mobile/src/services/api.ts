@@ -66,6 +66,42 @@ export const api = {
   },
 
   /**
+   * Registro con correo electrónico y contraseña segura
+   */
+  async registerWithEmail(payload: { email: string; password: string; name?: string }) {
+    const res = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.message || 'Error al registrar cuenta');
+    }
+    return json.data.user;
+  },
+
+  /**
+   * Inicio de sesión con correo electrónico y contraseña
+   */
+  async loginWithEmail(payload: { email: string; password: string }) {
+    const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.message || 'Error al iniciar sesión');
+    }
+    return json.data.user;
+  },
+
+  /**
    * Inicio de sesión / registro con Google, Facebook o Apple
    */
   async socialLogin(payload: {
@@ -99,5 +135,29 @@ export const api = {
       throw new Error(json.message || 'Error al obtener perfil');
     }
     return json.data;
+  },
+
+  /**
+   * Calificar o reportar un código de barras
+   * type: 'WORKING' | 'BROKEN'
+   */
+  async submitBarcodeFeedback(payload: {
+    barcode: string;
+    type: 'WORKING' | 'BROKEN';
+    reason?: string;
+    userId?: string;
+  }) {
+    const res = await fetch(`${API_BASE_URL}/products/feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.message || 'Error al enviar reporte del código');
+    }
+    return json;
   }
 };

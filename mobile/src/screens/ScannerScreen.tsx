@@ -400,6 +400,10 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
         barcode={previewBarcode}
         productName={previewProductName}
         showSaveActions={true}
+        readOnly={Boolean(lookupData?.exists)}
+        brokenReportsCount={lookupData?.data?.product?.brokenReportsCount ?? lookupData?.brokenReportsCount}
+        workingVotesCount={lookupData?.data?.product?.workingVotesCount ?? lookupData?.workingVotesCount}
+        isReportedBroken={Boolean(lookupData?.data?.product?.isReportedBroken ?? lookupData?.isReportedBroken)}
         onConfirmAndRegister={(verifiedCode) => {
           setPreviewModalVisible(false);
           onBarcodeDetected(verifiedCode, lookupData?.data || null);

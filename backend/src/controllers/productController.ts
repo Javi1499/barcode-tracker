@@ -29,10 +29,20 @@ export async function lookupBarcode(req: Request, res: Response) {
     });
 
     if (!product) {
+      const brokenReportsCount = await prisma.barcodeReport.count({
+        where: { barcode: barcode.trim(), type: 'BROKEN' }
+      });
+      const workingVotesCount = await prisma.barcodeReport.count({
+        where: { barcode: barcode.trim(), type: 'WORKING' }
+      });
+
       return res.status(200).json({
         success: true,
         exists: false,
         barcode: barcode.trim(),
+        workingVotesCount,
+        brokenReportsCount,
+        isReportedBroken: brokenReportsCount >= 5,
         message: 'Código no registrado previamente. Debe llenarse el formulario de nuevo producto.'
       });
     }
@@ -51,7 +61,10 @@ export async function lookupBarcode(req: Request, res: Response) {
           barcode: product.barcode,
           name: product.name,
           brand: product.brand,
-          category: product.category
+          category: product.category,
+          workingVotesCount: product.workingVotesCount,
+          brokenReportsCount: product.brokenReportsCount,
+          isReportedBroken: product.brokenReportsCount >= 5
         },
         latestPriceEntry: latestEntry
           ? {
@@ -65,7 +78,10 @@ export async function lookupBarcode(req: Request, res: Response) {
               notes: latestEntry.notes
             }
           : null,
-        recentSightingsCount: product.priceEntries.length
+        recentSightingsCount: product.priceEntries.length,
+        workingVotesCount: product.workingVotesCount,
+        brokenReportsCount: product.brokenReportsCount,
+        isReportedBroken: product.brokenReportsCount >= 5
       }
     });
   } catch (error) {
@@ -125,6 +141,9 @@ export async function searchCommunityDeals(req: Request, res: Response) {
           barcode: p.barcode,
           name: p.name,
           category: p.category,
+          workingVotesCount: p.workingVotesCount,
+          brokenReportsCount: p.brokenReportsCount,
+          isReportedBroken: p.brokenReportsCount >= 5,
           latestDeal: {
             price: Number(latest.reportedPrice),
             originalPrice: latest.originalPrice ? Number(latest.originalPrice) : null,
@@ -148,5 +167,88 @@ export async function searchCommunityDeals(req: Request, res: Response) {
   } catch (error) {
     console.error('Error en búsqueda comunitaria:', error);
     return res.status(500).json({ success: false, message: 'Error al buscar en el banco de ofertas' });
+  }
+}
+
+/**
+ * Calificar o reportar un código de barras.
+ * type: 'WORKING' (funciona en checador) | 'BROKEN' (no funciona / error en checador).
+ * Si acumula 5 o más reportes de 'BROKEN', la app muestra una alerta comunitaria.
+ */
+export async function submitBarcodeFeedback(req: Request, res: Response) {
+  try {
+    const { barcode, type, reason, userId } = req.body;
+
+    if (!barcode || !type || !['WORKING', 'BROKEN'].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Código de barras y tipo de reporte válido (WORKING o BROKEN) requeridos'
+      });
+    }
+
+    const cleanBarcode = String(barcode).trim();
+
+    // Buscar si el producto existe
+    const product = await prisma.product.findUnique({
+      where: { barcode: cleanBarcode }
+    });
+
+    // Guardar reporte individual
+    await prisma.barcodeReport.create({
+      data: {
+        barcode: cleanBarcode,
+        productId: product ? product.id : null,
+        userId: userId || null,
+        type,
+        reason: reason || null
+      }
+    });
+
+    let updatedWorking = 0;
+    let updatedBroken = 0;
+
+    if (product) {
+      const updatedProduct = await prisma.product.update({
+        where: { id: product.id },
+        data: {
+          workingVotesCount: type === 'WORKING' ? { increment: 1 } : undefined,
+          brokenReportsCount: type === 'BROKEN' ? { increment: 1 } : undefined
+        }
+      });
+      updatedWorking = updatedProduct.workingVotesCount;
+      updatedBroken = updatedProduct.brokenReportsCount;
+    } else {
+      updatedWorking = await prisma.barcodeReport.count({
+        where: { barcode: cleanBarcode, type: 'WORKING' }
+      });
+      updatedBroken = await prisma.barcodeReport.count({
+        where: { barcode: cleanBarcode, type: 'BROKEN' }
+      });
+    }
+
+    const isReportedBroken = updatedBroken >= 5;
+
+    return res.json({
+      success: true,
+      data: {
+        barcode: cleanBarcode,
+        type,
+        workingVotesCount: updatedWorking,
+        brokenReportsCount: updatedBroken,
+        isReportedBroken
+      },
+      message:
+        type === 'WORKING'
+          ? '¡Gracias! Se registró que este código funciona en el checador.'
+          : isReportedBroken
+          ? 'Reporte registrado. Este código acumula 5 o más reportes y se alertará a la comunidad.'
+          : `Reporte registrado (${updatedBroken}/5 reportes para alerta comunitaria).`
+    });
+  } catch (error) {
+    console.error('Error al registrar feedback de código:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al registrar el reporte del código'
+    });
   }
 }

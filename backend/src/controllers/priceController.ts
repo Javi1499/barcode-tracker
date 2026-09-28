@@ -265,14 +265,20 @@ export async function getProductPriceHistory(req: Request, res: Response) {
           barcode: product.barcode,
           name: product.name,
           brand: product.brand,
-          category: product.category
+          category: product.category,
+          workingVotesCount: product.workingVotesCount,
+          brokenReportsCount: product.brokenReportsCount,
+          isReportedBroken: product.brokenReportsCount >= 5
         },
         stats: {
           totalSightings: product.priceEntries.length,
           currentPrice,
           lowestPrice,
           highestPrice,
-          isAtAllTimeLow: currentPrice !== null && lowestPrice !== null && currentPrice <= lowestPrice
+          isAtAllTimeLow: currentPrice !== null && lowestPrice !== null && currentPrice <= lowestPrice,
+          workingVotesCount: product.workingVotesCount,
+          brokenReportsCount: product.brokenReportsCount,
+          isReportedBroken: product.brokenReportsCount >= 5
         },
         // Historial completo listo para graficar en React Native
         history: product.priceEntries.map(entry => ({

@@ -14,7 +14,6 @@
   },
   "include": [
     "src/**/*",
-    "App.tsx",
-    ".expo/types/**/*.ts"
+    "App.tsx"
   ]
 }

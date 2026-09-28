@@ -79,6 +79,22 @@ export const ProductPriceHistoryScreen: React.FC<ProductPriceHistoryScreenProps>
         <Text style={styles.productName}>{product.name}</Text>
         <Text style={styles.barcodeText}>Código: {product.barcode}</Text>
 
+        {/* Banner de alerta si acumula 5 o más reportes de que no funciona */}
+        {(product.isReportedBroken || (product.brokenReportsCount !== undefined && product.brokenReportsCount >= 5)) && (
+          <View style={styles.brokenWarningCard}>
+            <Text style={styles.brokenWarningIcon}>⚠️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.brokenWarningTitle}>Aviso de Fiabilidad del Código</Text>
+              <Text style={styles.brokenWarningText}>
+                Este código puede que ya no esté funcionando o fue reportado con error.
+              </Text>
+              <Text style={styles.brokenWarningSub}>
+                Acumula {product.brokenReportsCount} reportes de que no pasa en el checador de la tienda.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Banner de decisión de compra */}
         <View style={[styles.decisionBadge, stats.isAtAllTimeLow ? styles.badgeGreen : styles.badgeYellow]}>
           <Text style={styles.decisionIcon}>{stats.isAtAllTimeLow ? '🔥' : '⏳'}</Text>
@@ -190,12 +206,30 @@ export const ProductPriceHistoryScreen: React.FC<ProductPriceHistoryScreenProps>
         })}
       </View>
 
-      {/* Modal para Generar Código de Barras Físico en Pantalla */}
+      {/* Modal para Generar Código de Barras Físico en Pantalla (Protegido / Read Only) */}
       <BarcodeModal
         visible={barcodeModalVisible}
         onClose={() => setBarcodeModalVisible(false)}
         barcode={product.barcode}
         productName={product.name}
+        readOnly={true}
+        brokenReportsCount={product.brokenReportsCount}
+        workingVotesCount={product.workingVotesCount}
+        isReportedBroken={product.isReportedBroken}
+        onFeedbackSubmitted={(_type, newCounts) => {
+          setData(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              product: {
+                ...prev.product,
+                workingVotesCount: newCounts.working,
+                brokenReportsCount: newCounts.broken,
+                isReportedBroken: newCounts.broken >= 5
+              }
+            };
+          });
+        }}
       />
     </ScrollView>
   );
@@ -260,6 +294,37 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 13,
     marginBottom: 16
+  },
+  brokenWarningCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#451a03',
+    borderWidth: 1.5,
+    borderColor: '#d97706',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    gap: 12
+  },
+  brokenWarningIcon: {
+    fontSize: 24
+  },
+  brokenWarningTitle: {
+    color: '#fbbf24',
+    fontSize: 14,
+    fontWeight: '800',
+    marginBottom: 2
+  },
+  brokenWarningText: {
+    color: '#fef3c7',
+    fontSize: 12.5,
+    fontWeight: '600',
+    lineHeight: 17
+  },
+  brokenWarningSub: {
+    color: '#fde68a',
+    fontSize: 11,
+    marginTop: 3
   },
   decisionBadge: {
     flexDirection: 'row',

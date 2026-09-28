@@ -82,6 +82,14 @@ export const CommunityDealsScreen: React.FC<CommunityDealsScreenProps> = ({ onSe
                 <Text style={styles.barcodeText}>{item.barcode}</Text>
               </View>
 
+              {Boolean(item.isReportedBroken || (item.brokenReportsCount !== undefined && item.brokenReportsCount >= 5)) && (
+                <View style={styles.brokenBadge}>
+                  <Text style={styles.brokenBadgeText}>
+                    ⚠️ Reportado con error ({item.brokenReportsCount} reportes en checador)
+                  </Text>
+                </View>
+              )}
+
               <View style={styles.dealContent}>
                 <View>
                   <Text style={styles.priceLabel}>Último precio visto:</Text>
@@ -251,5 +259,21 @@ const styles = StyleSheet.create({
     color: '#64748b',
     fontSize: 14,
     textAlign: 'center'
+  },
+  brokenBadge: {
+    backgroundColor: '#451a03',
+    borderColor: '#d97706',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    marginTop: 6,
+    marginBottom: 4,
+    alignSelf: 'flex-start'
+  },
+  brokenBadgeText: {
+    color: '#fef3c7',
+    fontSize: 11.5,
+    fontWeight: '700'
   }
 });

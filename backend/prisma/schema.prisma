@@ -23,10 +23,11 @@ model User {
   id           String        @id @default(uuid())
   email        String        @unique
   username     String        @unique
+  passwordHash String?       // Hash criptográfico para registro con email/password
   name         String?
   avatarUrl    String?
   reputation   Int           @default(0) // Puntos por registrar ofertas verídicas
-  authProvider String?       // 'google' | 'facebook' | 'apple'
+  authProvider String?       // 'email' | 'google' | 'facebook' | 'apple'
   providerId   String?       // ID externo de OAuth
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -38,22 +39,40 @@ model User {
 }
 
 model Product {
-  id           String        @id @default(uuid())
-  barcode      String        @unique // Código EAN-13, UPC-A, etc.
-  name         String
-  brand        String?
-  category     String?       // Electrónica, Juguetería, Alimentos, etc.
-  description  String?
-  imageUrl     String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id                 String          @id @default(uuid())
+  barcode            String          @unique // Código EAN-13, UPC-A, etc.
+  name               String
+  brand              String?
+  category           String?         // Electrónica, Juguetería, Alimentos, etc.
+  description        String?
+  imageUrl           String?
+  workingVotesCount  Int             @default(0)
+  brokenReportsCount Int             @default(0)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
   // Relación 1 a N inmutable: Cada nuevo reporte de precio es una fila separada en el historial
-  priceEntries PriceEntry[]
+  priceEntries       PriceEntry[]
+  barcodeReports     BarcodeReport[]
 
   @@index([barcode])
   @@index([name])
   @@map("products")
+}
+
+model BarcodeReport {
+  id        String   @id @default(uuid())
+  barcode   String
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String?
+  type      String   // 'WORKING' | 'BROKEN'
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([barcode])
+  @@index([productId])
+  @@map("barcode_reports")
 }
 
 model Store {
