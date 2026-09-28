@@ -48,11 +48,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     }
   };
 
-  const providerLabel = {
+  const providerLabel: Record<string, string> = {
+    email: 'Correo y Contraseña',
     google: 'Google',
     facebook: 'Facebook',
     apple: 'Apple'
-  }[user.authProvider] || 'Social';
+  };
+  const currentProviderText = providerLabel[user.authProvider] || 'Correo';
 
   return (
     <Modal
@@ -84,7 +86,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 <Text style={styles.userHandle}>@{user.username}</Text>
                 <View style={styles.providerTag}>
                   <Text style={styles.providerTagText}>
-                    🔗 Conectado con {providerLabel}
+                    🔗 Conectado con {currentProviderText}
                   </Text>
                 </View>
               </View>

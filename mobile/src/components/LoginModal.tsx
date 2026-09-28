@@ -25,9 +25,20 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<'google' | 'facebook' | 'apple' | null>(null);
-  const [customMode, setCustomMode] = useState(false);
-  const [customName, setCustomName] = useState('');
-  const [customEmail, setCustomEmail] = useState('');
+  const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  const resetForm = () => {
+    setName('');
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+  };
 
   const handleSocialLogin = async (provider: 'google' | 'facebook' | 'apple') => {
     setLoading(true);
@@ -39,6 +50,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         '¡Bienvenido Cazador!',
         `Has iniciado sesión como @${user.username} mediante ${provider.toUpperCase()}. Tienes ${user.reputation} puntos de reputación iniciales.`
       );
+      resetForm();
       onLoginSuccess(user);
       onClose();
     } catch (err: any) {
@@ -52,26 +64,64 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }
   };
 
-  const handleEmailLogin = async () => {
-    if (!customEmail.trim() || !customEmail.includes('@')) {
-      Alert.alert('Correo Requerido', 'Por favor ingresa un correo electrónico válido para registrar tu cuenta.');
+  const handleEmailAuth = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      Alert.alert('Correo Requerido', 'Por favor ingresa un correo electrónico válido.');
       return;
+    }
+
+    if (!password) {
+      Alert.alert('Contraseña Requerida', 'Por favor ingresa tu contraseña.');
+      return;
+    }
+
+    if (authMode === 'REGISTER') {
+      if (password.length < 8) {
+        Alert.alert(
+          'Contraseña Débil',
+          'Por motivos de seguridad, la contraseña debe tener al menos 8 caracteres.'
+        );
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        Alert.alert(
+          'Contraseñas no coinciden',
+          'La confirmación de la contraseña no coincide. Por favor revísala.'
+        );
+        return;
+      }
     }
 
     setLoading(true);
     setSelectedProvider(null);
 
     try {
-      const user = await AuthService.loginWithEmail(customEmail, customName);
-      Alert.alert(
-        '¡Bienvenido Cazador!',
-        `Has iniciado sesión como @${user.username}. Tienes ${user.reputation} puntos de reputación iniciales.`
-      );
+      let user: UserProfile;
+      if (authMode === 'REGISTER') {
+        user = await AuthService.registerWithEmail(cleanEmail, password, name);
+        Alert.alert(
+          '¡Cuenta Creada!',
+          `Bienvenido @${user.username}. Tu cuenta ha sido protegida con tu contraseña y tienes ${user.reputation} puntos de reputación iniciales.`
+        );
+      } else {
+        user = await AuthService.loginWithEmail(cleanEmail, password);
+        Alert.alert(
+          '¡Bienvenido Cazador!',
+          `Has iniciado sesión como @${user.username}.`
+        );
+      }
+
+      resetForm();
       onLoginSuccess(user);
       onClose();
     } catch (err: any) {
-      console.error('Error al iniciar sesión con correo:', err);
-      Alert.alert('Error de Registro', err.message || 'No se pudo conectar con el servidor.');
+      console.error('Error en autenticación con correo:', err);
+      Alert.alert(
+        authMode === 'REGISTER' ? 'Error al Registrar Cuenta' : 'Error al Iniciar Sesión',
+        err.message || 'No se pudo conectar con el servidor.'
+      );
     } finally {
       setLoading(false);
     }
@@ -97,20 +147,172 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={styles.title}>Únete a la Comunidad</Text>
+            <Text style={styles.title}>
+              {authMode === 'LOGIN' ? 'Inicia Sesión' : 'Crea tu Cuenta'}
+            </Text>
             <Text style={styles.subtitle}>
-              Inicia sesión para registrar ofertas, ganar reputación y guardar tu historial de precios en tiendas físicas.
+              {authMode === 'LOGIN'
+                ? 'Accede con tu cuenta segura para registrar liquidaciones y consultar precios comunitarios.'
+                : 'Regístrate con tu correo y una contraseña segura para unirte a la red de cazadores de ofertas.'}
             </Text>
 
             {loading ? (
               <View style={styles.loadingBox}>
                 <ActivityIndicator size="large" color="#38bdf8" />
                 <Text style={styles.loadingText}>
-                  Conectando con {selectedProvider?.toUpperCase()}...
+                  {selectedProvider
+                    ? `Conectando con ${selectedProvider.toUpperCase()}...`
+                    : authMode === 'REGISTER'
+                    ? 'Creando y asegurando tu cuenta...'
+                    : 'Verificando credenciales...'}
                 </Text>
               </View>
             ) : (
               <View style={styles.buttonsContainer}>
+                {/* Selector de Pestañas: Iniciar Sesión vs Registrarse */}
+                <View style={styles.tabSelector}>
+                  <TouchableOpacity
+                    style={[
+                      styles.tabBtn,
+                      authMode === 'LOGIN' && styles.tabBtnActive
+                    ]}
+                    onPress={() => setAuthMode('LOGIN')}
+                  >
+                    <Text
+                      style={[
+                        styles.tabBtnText,
+                        authMode === 'LOGIN' && styles.tabBtnTextActive
+                      ]}
+                    >
+                      Iniciar Sesión
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.tabBtn,
+                      authMode === 'REGISTER' && styles.tabBtnActive
+                    ]}
+                    onPress={() => setAuthMode('REGISTER')}
+                  >
+                    <Text
+                      style={[
+                        styles.tabBtnText,
+                        authMode === 'REGISTER' && styles.tabBtnTextActive
+                      ]}
+                    >
+                      Crear Cuenta
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Formulario con Correo y Contraseña */}
+                <View style={styles.customInputsCard}>
+                  {authMode === 'REGISTER' && (
+                    <>
+                      <Text style={styles.customLabel}>Nombre o Alias (Opcional):</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Ej. Javier Cazador"
+                        placeholderTextColor="#64748b"
+                        value={name}
+                        onChangeText={setName}
+                      />
+                    </>
+                  )}
+
+                  <Text style={styles.customLabel}>Correo Electrónico *:</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="ejemplo@correo.com"
+                    placeholderTextColor="#64748b"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={email}
+                    onChangeText={setEmail}
+                  />
+
+                  <Text style={styles.customLabel}>Contraseña *:</Text>
+                  <View style={styles.passwordInputContainer}>
+                    <TextInput
+                      style={styles.passwordInput}
+                      placeholder={
+                        authMode === 'REGISTER'
+                          ? 'Mínimo 8 caracteres'
+                          : 'Ingresa tu contraseña'
+                      }
+                      placeholderTextColor="#64748b"
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      value={password}
+                      onChangeText={setPassword}
+                    />
+                    <TouchableOpacity
+                      style={styles.eyeBtn}
+                      onPress={() => setShowPassword(prev => !prev)}
+                    >
+                      <Text style={styles.eyeBtnText}>
+                        {showPassword ? '🙈' : '👁️'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {authMode === 'REGISTER' && (
+                    <Text style={styles.passwordHint}>
+                      🔒 Mínimo 8 caracteres para asegurar tu cuenta contra accesos no autorizados.
+                    </Text>
+                  )}
+
+                  {authMode === 'REGISTER' && (
+                    <>
+                      <Text style={styles.customLabel}>Confirmar Contraseña *:</Text>
+                      <View style={styles.passwordInputContainer}>
+                        <TextInput
+                          style={styles.passwordInput}
+                          placeholder="Repite tu contraseña"
+                          placeholderTextColor="#64748b"
+                          secureTextEntry={!showPassword}
+                          autoCapitalize="none"
+                          value={confirmPassword}
+                          onChangeText={setConfirmPassword}
+                        />
+                      </View>
+                    </>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.emailSubmitBtn}
+                    onPress={handleEmailAuth}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.emailSubmitBtnText}>
+                      {authMode === 'LOGIN'
+                        ? '⚡ Iniciar Sesión'
+                        : '✨ Crear Cuenta de Cazador'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Toggle entre Iniciar Sesión y Registrarse */}
+                  <TouchableOpacity
+                    style={styles.switchModeBtn}
+                    onPress={() => {
+                      setAuthMode(prev => (prev === 'LOGIN' ? 'REGISTER' : 'LOGIN'));
+                    }}
+                  >
+                    <Text style={styles.switchModeText}>
+                      {authMode === 'LOGIN'
+                        ? '¿No tienes cuenta? Regístrate aquí'
+                        : '¿Ya tienes una cuenta? Inicia sesión aquí'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Divisor */}
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>O INGRESA CON REDES SOCIALES</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
                 {/* 1. Botón Google */}
                 <TouchableOpacity
                   style={[styles.socialBtn, styles.googleBtn]}
@@ -147,44 +349,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <Text style={styles.facebookBtnText}>Continuar con Facebook</Text>
                 </TouchableOpacity>
 
-                {/* Divisor */}
-                <View style={styles.dividerRow}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>O REGÍSTRATE CON TU CORREO</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-
-                {/* Formulario de registro/login directo con correo */}
-                <View style={styles.customInputsCard}>
-                  <Text style={styles.customLabel}>Tu Nombre o Alias (Opcional):</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Ej. Javier"
-                    placeholderTextColor="#64748b"
-                    value={customName}
-                    onChangeText={setCustomName}
-                  />
-
-                  <Text style={styles.customLabel}>Tu Correo Electrónico *:</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="ejemplo@correo.com"
-                    placeholderTextColor="#64748b"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    value={customEmail}
-                    onChangeText={setCustomEmail}
-                  />
-
-                  <TouchableOpacity
-                    style={styles.emailSubmitBtn}
-                    onPress={handleEmailLogin}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.emailSubmitBtnText}>⚡ Entrar / Crear Cuenta con Correo</Text>
-                  </TouchableOpacity>
-                </View>
-
                 {/* Continuar como invitado */}
                 <TouchableOpacity style={styles.guestBtn} onPress={onClose}>
                   <Text style={styles.guestBtnText}>Continuar explorando como invitado</Text>
@@ -194,7 +358,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
             <View style={styles.privacyNote}>
               <Text style={styles.privacyNoteText}>
-                Tus datos se utilizan únicamente para atribuir los precios que reportas a tu perfil y otorgarte puntos de reputación en la comunidad.
+                Tus credenciales están encriptadas con algoritmos seguros. Nadie más puede acceder a tu cuenta ni atribuirse tus liquidaciones.
               </Text>
             </View>
           </ScrollView>
@@ -449,5 +613,73 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 14
+  },
+  // Pestañas Iniciar Sesión / Crear Cuenta
+  tabSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 10
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center'
+  },
+  tabBtnActive: {
+    backgroundColor: '#0284c7'
+  },
+  tabBtnText: {
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: '600'
+  },
+  tabBtnTextActive: {
+    color: '#ffffff',
+    fontWeight: '800'
+  },
+  // Campo de Contraseña
+  passwordInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1e293b',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#475569'
+  },
+  passwordInput: {
+    flex: 1,
+    color: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 14
+  },
+  eyeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  eyeBtnText: {
+    fontSize: 16
+  },
+  passwordHint: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginTop: 5,
+    lineHeight: 15
+  },
+  switchModeBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 6
+  },
+  switchModeText: {
+    color: '#38bdf8',
+    fontSize: 12.5,
+    fontWeight: '600',
+    textAlign: 'center'
   }
 });

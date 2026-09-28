@@ -13,7 +13,7 @@ export interface UserProfile {
   name: string;
   avatarUrl?: string;
   reputation: number;
-  authProvider: 'google' | 'facebook' | 'apple';
+  authProvider: 'email' | 'google' | 'facebook' | 'apple';
   createdAt?: string;
 }
 
@@ -93,23 +93,42 @@ export const AuthService = {
   },
 
   /**
-   * Registro e inicio de sesión directo con correo electrónico y nombre
+   * Registro seguro de cuenta nueva con correo electrónico y contraseña
    */
-  async loginWithEmail(email: string, name?: string): Promise<UserProfile> {
+  async registerWithEmail(email: string, password: string, name?: string): Promise<UserProfile> {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
       throw new Error('Por favor ingresa un correo electrónico válido.');
     }
+    if (!password || password.length < 8) {
+      throw new Error('La contraseña debe tener al menos 8 caracteres para ser segura.');
+    }
 
-    const payload = {
-      provider: 'google' as const,
-      providerId: `email_${cleanEmail}`,
+    const user = await api.registerWithEmail({
       email: cleanEmail,
-      name: name?.trim() || cleanEmail.split('@')[0],
-      avatarUrl: `https://api.dicebear.com/7.x/bottts/png?seed=${encodeURIComponent(cleanEmail)}`
-    };
+      password,
+      name: name?.trim()
+    });
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    return user;
+  },
 
-    const user = await api.socialLogin(payload);
+  /**
+   * Inicio de sesión seguro con correo electrónico y contraseña
+   */
+  async loginWithEmail(email: string, password: string): Promise<UserProfile> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      throw new Error('Por favor ingresa un correo electrónico válido.');
+    }
+    if (!password) {
+      throw new Error('Por favor ingresa tu contraseña.');
+    }
+
+    const user = await api.loginWithEmail({
+      email: cleanEmail,
+      password
+    });
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     return user;
   },
@@ -119,17 +138,8 @@ export const AuthService = {
    * usando flujos reales de OAuth 2.0 mediante WebBrowser y AuthSession
    */
   async loginWithSocial(
-    provider: 'google' | 'facebook' | 'apple',
-    userData?: {
-      email?: string;
-      name?: string;
-      avatarUrl?: string;
-    }
+    provider: 'google' | 'facebook' | 'apple'
   ): Promise<UserProfile> {
-    // Si el usuario especificó datos directos (ej. modo personalizado manual)
-    if (userData?.email) {
-      return this.loginWithEmail(userData.email, userData.name);
-    }
 
     const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
     const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID;

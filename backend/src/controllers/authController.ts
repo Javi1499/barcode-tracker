@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
+import { hashPassword, verifyPassword } from '../lib/password';
 
 const socialLoginSchema = z.object({
   provider: z.enum(['google', 'facebook', 'apple']),
@@ -9,6 +10,160 @@ const socialLoginSchema = z.object({
   name: z.string().optional(),
   avatarUrl: z.string().url().optional()
 });
+
+const registerSchema = z.object({
+  email: z.string().email('Por favor ingresa un correo electrónico válido'),
+  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres para ser segura'),
+  name: z.string().optional()
+});
+
+const loginSchema = z.object({
+  email: z.string().email('Por favor ingresa un correo electrónico válido'),
+  password: z.string().min(1, 'La contraseña es requerida')
+});
+
+/**
+ * Registro de cuenta con correo electrónico y contraseña segura.
+ */
+export async function registerWithEmail(req: Request, res: Response) {
+  try {
+    const validated = registerSchema.parse(req.body);
+    const { email, password, name } = validated;
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 1. Verificar si el correo ya está registrado
+    const existingUser = await prisma.user.findUnique({
+      where: { email: cleanEmail }
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Este correo electrónico ya está registrado. Por favor inicia sesión.'
+      });
+    }
+
+    // 2. Generar nombre de usuario único y hash seguro de la contraseña
+    const username = await generateUniqueUsername(name || cleanEmail);
+    const passwordHash = hashPassword(password);
+
+    // 3. Crear el nuevo usuario
+    const newUser = await prisma.user.create({
+      data: {
+        email: cleanEmail,
+        username,
+        passwordHash,
+        name: name?.trim() || username,
+        avatarUrl: `https://api.dicebear.com/7.x/bottts/png?seed=${encodeURIComponent(username)}`,
+        authProvider: 'email',
+        reputation: 50 // Bonificación de bienvenida
+      }
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Cuenta creada exitosamente',
+      data: {
+        user: {
+          id: newUser.id,
+          email: newUser.email,
+          username: newUser.username,
+          name: newUser.name,
+          avatarUrl: newUser.avatarUrl,
+          reputation: newUser.reputation,
+          authProvider: newUser.authProvider,
+          createdAt: newUser.createdAt
+        }
+      }
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: error.errors[0]?.message || 'Datos de registro inválidos',
+        errors: error.errors
+      });
+    }
+
+    console.error('Error en registro con correo:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor al crear la cuenta'
+    });
+  }
+}
+
+/**
+ * Inicio de sesión con correo electrónico y contraseña.
+ */
+export async function loginWithEmail(req: Request, res: Response) {
+  try {
+    const validated = loginSchema.parse(req.body);
+    const { email, password } = validated;
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 1. Buscar usuario por correo
+    const user = await prisma.user.findUnique({
+      where: { email: cleanEmail }
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Credenciales inválidas. Verifica tu correo o contraseña.'
+      });
+    }
+
+    // 2. Si el usuario se registró vía red social y no tiene contraseña local
+    if (!user.passwordHash) {
+      const providerName = user.authProvider ? user.authProvider.toUpperCase() : 'OAuth';
+      return res.status(400).json({
+        success: false,
+        message: `Esta cuenta fue creada usando ${providerName}. Por favor inicia sesión con el botón de ${providerName}.`
+      });
+    }
+
+    // 3. Comprobar la contraseña con el hash seguro
+    const isValid = verifyPassword(password, user.passwordHash);
+    if (!isValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Credenciales inválidas. Verifica tu correo o contraseña.'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Sesión iniciada con éxito',
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+          reputation: user.reputation,
+          authProvider: user.authProvider,
+          createdAt: user.createdAt
+        }
+      }
+    });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        success: false,
+        message: error.errors[0]?.message || 'Datos de inicio de sesión inválidos',
+        errors: error.errors
+      });
+    }
+
+    console.error('Error en login con correo:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor durante el inicio de sesión'
+    });
+  }
+}
 
 /**
  * Genera un username único a partir del email o nombre
