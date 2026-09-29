@@ -7,16 +7,32 @@ import {
 // Configuración dinámica de API (EAS Build o desarrollo local)
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://barcode-tracker-production.up.railway.app/api';
 
+/**
+ * Parsea de manera segura respuestas que puedan no ser JSON (ej. páginas de error HTML 404/502)
+ */
+async function safeJsonParse(res: Response, defaultError: string): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (!res.ok) {
+      throw new Error(`Error del servidor (${res.status}): ${res.statusText || defaultError}`);
+    }
+    throw new Error(defaultError);
+  }
+}
+
 export const api = {
   /**
    * Consulta si un código de barras ya existe en el sistema
    */
   async lookupBarcode(barcode: string): Promise<BarcodeLookupResponse> {
     const res = await fetch(`${API_BASE_URL}/products/lookup/${encodeURIComponent(barcode)}`);
+    const json = await safeJsonParse(res, 'Error en lookup de producto');
     if (!res.ok) {
-      throw new Error(`Error en lookup: ${res.statusText}`);
+      throw new Error(json.message || `Error en lookup: ${res.statusText}`);
     }
-    return res.json();
+    return json;
   },
 
   /**
@@ -24,7 +40,7 @@ export const api = {
    */
   async getPriceHistory(barcode: string): Promise<ProductPriceHistoryResponse> {
     const res = await fetch(`${API_BASE_URL}/prices/history/${encodeURIComponent(barcode)}`);
-    const json = await res.json();
+    const json = await safeJsonParse(res, 'Error al obtener historial');
     if (!res.ok || !json.success) {
       throw new Error(json.message || 'Error al obtener historial');
     }
@@ -42,7 +58,7 @@ export const api = {
       },
       body: JSON.stringify(payload)
     });
-    const json = await res.json();
+    const json = await safeJsonParse(res, 'Error al guardar precio');
     if (!res.ok || !json.success) {
       throw new Error(json.message || 'Error al guardar precio');
     }
@@ -58,7 +74,7 @@ export const api = {
     if (storeName) params.append('storeName', storeName);
 
     const res = await fetch(`${API_BASE_URL}/products/community/search?${params.toString()}`);
-    const json = await res.json();
+    const json = await safeJsonParse(res, 'Error al buscar en la comunidad');
     if (!res.ok) {
       throw new Error(json.message || 'Error al buscar en la comunidad');
     }
@@ -76,7 +92,7 @@ export const api = {
       },
       body: JSON.stringify(payload)
     });
-    const json = await res.json();
+    const json = await safeJsonParse(res, 'Error al registrar cuenta');
     if (!res.ok || !json.success) {
       throw new Error(json.message || 'Error al registrar cuenta');
     }
@@ -94,7 +110,7 @@ export const api = {
       },
       body: JSON.stringify(payload)
     });
-    const json = await res.json();
+    const json = await safeJsonParse(res, 'Error al iniciar sesión');
     if (!res.ok || !json.success) {
       throw new Error(json.message || 'Error al iniciar sesión');
     }
@@ -118,7 +134,7 @@ export const api = {
       },
       body: JSON.stringify(payload)
     });
-    const json = await res.json();
+    const json = await safeJsonParse(res, 'Error en autenticación social');
     if (!res.ok || !json.success) {
       throw new Error(json.message || 'Error en autenticación social');
     }
@@ -130,7 +146,7 @@ export const api = {
    */
   async getUserProfile(userId: string) {
     const res = await fetch(`${API_BASE_URL}/auth/profile/${encodeURIComponent(userId)}`);
-    const json = await res.json();
+    const json = await safeJsonParse(res, 'Error al obtener perfil');
     if (!res.ok || !json.success) {
       throw new Error(json.message || 'Error al obtener perfil');
     }
@@ -154,10 +170,11 @@ export const api = {
       },
       body: JSON.stringify(payload)
     });
-    const json = await res.json();
+    const json = await safeJsonParse(res, 'Error al enviar reporte del código');
     if (!res.ok || !json.success) {
       throw new Error(json.message || 'Error al enviar reporte del código');
     }
     return json;
   }
 };
+
