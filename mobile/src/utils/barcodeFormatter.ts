@@ -115,77 +115,95 @@ export function analyzeAndFormatBarcode(rawCode: string): BarcodeAnalysis {
     }
   }
 
-  // CASO 2: Tiene 12 dígitos (Típica etiqueta de estante donde omitieron el check digit de EAN-13 o es UPC-A)
+  // CASO 2: Tiene 12 dígitos (Estándar oficial UPC-A)
+  // En supermercados como Walmart, Sam's Club, Aurrera y Soriana, gran cantidad de mercancía
+  // (marcas globales, abarrotes, importaciones, etc.) utiliza códigos UPC-A de 12 dígitos.
+  // NO se debe alterar ni agregar un 13º dígito por defecto, ya que corrompe el SKU del producto en tienda.
   if (digitsOnly.length === 12) {
-    // 2.A: Asumir que son los 12 dígitos de EAN-13 y falta el 13vo dígito verificador
-    const check13 = calculateEan13CheckDigit(digitsOnly);
-    const completedEan13 = `${digitsOnly}${check13}`;
+    const base11 = digitsOnly.slice(0, 11);
+    const expectedUpcCheck = calculateUpcCheckDigit(base11);
+    const currentUpcCheck = parseInt(digitsOnly[11], 10);
+    const isUpcValid = expectedUpcCheck === currentUpcCheck;
 
-    // 2.B: Asumir que es UPC-A (12 dígitos) y convertirlo a EAN-13 anteponiendo un 0
-    const eanWithZero = `0${digitsOnly}`;
-
+    // Variante 1 (POR DEFECTO): UPC-A Estándar con los 12 dígitos exactos
     variations.unshift({
-      code: completedEan13,
-      format: 'EAN13',
-      label: 'EAN-13 Acompletado',
-      tag: 'Cenefa Walmart',
-      description: `Se calculó el 13º dígito verificador '${check13}' que los empleados omiten en la etiqueta.`
-    });
-
-    variations.push({
       code: digitsOnly,
       format: 'UPC',
-      label: 'UPC-A Estándar (12d)',
-      tag: 'Sam\'s / USA',
-      description: 'Formato estándar de 12 dígitos para mercancía de Sam\'s Club o importación.'
+      label: 'UPC-A Estándar (12 dígitos)',
+      tag: isUpcValid ? 'Estándar Oficial' : 'UPC-A (12d)',
+      description: 'Estándar oficial de 12 dígitos para Walmart, Sam\'s Club y marcas globales.'
     });
 
+    // Si el 12º dígito de la etiqueta tiene error de imprenta, ofrecer corrección UPC
+    if (!isUpcValid && expectedUpcCheck !== -1) {
+      const correctedUpc = `${base11}${expectedUpcCheck}`;
+      variations.push({
+        code: correctedUpc,
+        format: 'UPC',
+        label: 'UPC-A con Verificador Corregido',
+        tag: 'Dígito Corregido',
+        description: `Se recalculó el 12º dígito a '${expectedUpcCheck}' según la norma matemática de UPC-A.`
+      });
+    }
+
+    // Variante 2: Convertir a EAN-13 anteponiendo un cero (algunos checadores leen UPC como EAN-13 con 0 inicial)
+    const eanWithZero = `0${digitsOnly}`;
     variations.push({
       code: eanWithZero,
       format: 'EAN13',
-      label: 'EAN-13 con Prefijo 0',
-      tag: 'Checador Walmart',
-      description: 'UPC adaptado con cero inicial para bases de datos de autoservicios en México.'
+      label: 'EAN-13 con Cero Inicial (13d)',
+      tag: 'Variante EAN',
+      description: 'Código de 12 dígitos adaptado con prefijo 0 para terminales que exigen 13 dígitos.'
+    });
+
+    // Variante 3: Por si fue una cenefa de estante recortada que omitió el 13vo dígito de un EAN-13
+    const check13 = calculateEan13CheckDigit(digitsOnly);
+    const completedEan13 = `${digitsOnly}${check13}`;
+    variations.push({
+      code: completedEan13,
+      format: 'EAN13',
+      label: 'EAN-13 Acompletado (13d)',
+      tag: 'Cenefa Incompleta',
+      description: `Variante alternativa asumiendo etiqueta de estante incompleta (+ '${check13}').`
     });
 
     return {
       original: clean,
-      isModified: true,
-      optimizedCode: completedEan13,
-      optimizedFormat: 'EAN13',
-      reason: 'Las etiquetas de precio en tienda frecuentemente omiten el último dígito verificador. Se calculó para formar el EAN-13 completo.',
+      isModified: false,
+      optimizedCode: digitsOnly,
+      optimizedFormat: 'UPC',
       variations
     };
   }
 
-  // CASO 3: Tiene 11 dígitos (UPC al que le falta el dígito verificador)
+  // CASO 3: Tiene 11 dígitos (UPC al que le falta el 12º dígito verificador)
   if (digitsOnly.length === 11) {
     const upcCheck = calculateUpcCheckDigit(digitsOnly);
     const fullUpc = `${digitsOnly}${upcCheck}`;
     const fullEan = `0${fullUpc}`;
 
     variations.unshift({
-      code: fullEan,
-      format: 'EAN13',
-      label: 'EAN-13 para Checador',
+      code: fullUpc,
+      format: 'UPC',
+      label: 'UPC-A Acompletado (12 dígitos)',
       tag: 'Recomendado',
-      description: `Código completado con dígito '${upcCheck}' y prefijo '0' para el checador de Walmart.`
+      description: `Se autocompletó con el 12º dígito verificador '${upcCheck}' para el estándar UPC-A.`
     });
 
     variations.push({
-      code: fullUpc,
-      format: 'UPC',
-      label: 'UPC-A Acompletado (12d)',
-      tag: 'Sam\'s Club',
-      description: `Se autocompletó con el dígito verificador '${upcCheck}'.`
+      code: fullEan,
+      format: 'EAN13',
+      label: 'EAN-13 con Prefijo 0 (13d)',
+      tag: 'Variante EAN',
+      description: `Código completado con dígito '${upcCheck}' y prefijo '0' para checadores de autoservicio.`
     });
 
     return {
       original: clean,
       isModified: true,
-      optimizedCode: fullEan,
-      optimizedFormat: 'EAN13',
-      reason: 'Etiqueta incompleta de 11 dígitos. Se calculó el verificador y se formateó para lectura en checadores.',
+      optimizedCode: fullUpc,
+      optimizedFormat: 'UPC',
+      reason: `Código de 11 dígitos. Se calculó el 12º dígito verificador ('${upcCheck}') para completar el estándar UPC-A.`,
       variations
     };
   }

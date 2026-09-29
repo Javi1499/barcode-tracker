@@ -48,8 +48,14 @@ interface FormatOption {
 
 const FORMAT_OPTIONS: FormatOption[] = [
   {
+    key: 'UPC',
+    label: 'UPC-A (12 dígitos)',
+    stores: 'Walmart, SAM\'s Club, Aurrera, Marcas Globales',
+    description: 'Estándar oficial de 12 dígitos para marcas globales, abarrotes y productos importados.'
+  },
+  {
     key: 'EAN13',
-    label: 'EAN-13',
+    label: 'EAN-13 (13 dígitos)',
     stores: 'Walmart, Bodega Aurrera, Soriana, Chedraui',
     description: 'Estándar oficial de 13 dígitos para tiendas de autoservicio en México.'
   },
@@ -58,12 +64,6 @@ const FORMAT_OPTIONS: FormatOption[] = [
     label: 'Code 128',
     stores: 'Etiquetas de Liquidación Walmart / SAM\'s',
     description: 'Formato de alta densidad utilizado en etiquetas de remate (.03, .02, .01) e inventario.'
-  },
-  {
-    key: 'UPC',
-    label: 'UPC-A',
-    stores: 'SAM\'s Club, Costco, Importaciones USA',
-    description: 'Estándar habitual en mercancía americana y clubes de precio mayoristas.'
   },
   {
     key: 'CODE39',
