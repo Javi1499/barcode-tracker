@@ -2,7 +2,8 @@ import { Router } from 'express';
 import {
   lookupBarcode,
   searchCommunityDeals,
-  submitBarcodeFeedback
+  submitBarcodeFeedback,
+  updateProduct
 } from '../controllers/productController';
 
 const router = Router();
@@ -16,4 +17,8 @@ router.get('/community/search', searchCommunityDeals);
 // POST /api/products/feedback - Calificar o reportar si un código funciona o no en checador
 router.post('/feedback', submitBarcodeFeedback);
 
+// PUT /api/products/:id - Editar nombre o datos del producto (sólo por su creador)
+router.put('/:id', updateProduct);
+
 export default router;
+

@@ -22,11 +22,13 @@ const SCAN_BOX_SIZE = Math.min(width * 0.75, 280);
 interface ScannerScreenProps {
   onBarcodeDetected: (barcode: string, lookupData?: any) => void;
   onViewHistory?: (barcode: string) => void;
+  onSaveToPersonalBank?: (barcode: string, lookupData?: any) => void;
 }
 
 export const ScannerScreen: React.FC<ScannerScreenProps> = ({
   onBarcodeDetected,
-  onViewHistory
+  onViewHistory,
+  onSaveToPersonalBank
 }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -408,6 +410,10 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
           setPreviewModalVisible(false);
           onBarcodeDetected(verifiedCode, lookupData?.data || null);
         }}
+        onSaveToPersonalBank={onSaveToPersonalBank ? (verifiedCode) => {
+          setPreviewModalVisible(false);
+          onSaveToPersonalBank(verifiedCode, lookupData?.data || null);
+        } : undefined}
         onViewHistory={onViewHistory ? (verifiedCode) => {
           setPreviewModalVisible(false);
           onViewHistory(verifiedCode);

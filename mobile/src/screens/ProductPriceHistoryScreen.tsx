@@ -5,26 +5,44 @@ import {
   View,
   ScrollView,
   TouchableOpacity,
-  ActivityIndicator
+  ActivityIndicator,
+  Modal,
+  TextInput,
+  Alert
 } from 'react-native';
 import { api } from '../services/api';
-import { ProductPriceHistoryResponse } from '../types';
+import { ProductPriceHistoryResponse, PriceEntry } from '../types';
 import { BarcodeModal } from '../components/BarcodeModal';
 
 interface ProductPriceHistoryScreenProps {
   barcode: string;
+  currentUserId?: string;
   onAddNewPrice: () => void;
   onBack: () => void;
 }
 
 export const ProductPriceHistoryScreen: React.FC<ProductPriceHistoryScreenProps> = ({
   barcode,
+  currentUserId,
   onAddNewPrice,
   onBack
 }) => {
   const [data, setData] = useState<ProductPriceHistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [barcodeModalVisible, setBarcodeModalVisible] = useState(false);
+
+  // Estados para edición del producto (sólo por su creador)
+  const [editProductModalVisible, setEditProductModalVisible] = useState(false);
+  const [editProductName, setEditProductName] = useState('');
+  const [savingProduct, setSavingProduct] = useState(false);
+
+  // Estados para corrección de precio registrado (sólo por quien lo registró)
+  const [editPriceModalVisible, setEditPriceModalVisible] = useState(false);
+  const [selectedPriceEntry, setSelectedPriceEntry] = useState<PriceEntry | null>(null);
+  const [editPriceVal, setEditPriceVal] = useState('');
+  const [editOrigPriceVal, setEditOrigPriceVal] = useState('');
+  const [editNotesVal, setEditNotesVal] = useState('');
+  const [savingPrice, setSavingPrice] = useState(false);
 
   useEffect(() => {
     loadHistory();
@@ -35,10 +53,88 @@ export const ProductPriceHistoryScreen: React.FC<ProductPriceHistoryScreenProps>
       setLoading(true);
       const res = await api.getPriceHistory(barcode);
       setData(res);
+      if (res?.product?.name) {
+        setEditProductName(res.product.name);
+      }
     } catch (err) {
       console.error('Error cargando historial:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOpenEditProduct = () => {
+    if (data?.product?.name) {
+      setEditProductName(data.product.name);
+    }
+    setEditProductModalVisible(true);
+  };
+
+  const handleSaveProductEdit = async () => {
+    if (!data?.product || !currentUserId) return;
+    if (!editProductName.trim()) {
+      Alert.alert('Nombre requerido', 'Ingresa un nombre válido para el producto');
+      return;
+    }
+
+    setSavingProduct(true);
+    try {
+      await api.updateProduct(data.product.id, {
+        userId: currentUserId,
+        name: editProductName.trim()
+      });
+      setData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          product: {
+            ...prev.product,
+            name: editProductName.trim()
+          }
+        };
+      });
+      Alert.alert('Actualizado', 'Nombre del producto actualizado correctamente por su creador.');
+      setEditProductModalVisible(false);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'No se pudo actualizar el producto');
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
+  const handleOpenEditPrice = (entry: PriceEntry) => {
+    setSelectedPriceEntry(entry);
+    setEditPriceVal(String(entry.price));
+    setEditOrigPriceVal(entry.originalPrice ? String(entry.originalPrice) : '');
+    setEditNotesVal(entry.notes || '');
+    setEditPriceModalVisible(true);
+  };
+
+  const handleSavePriceEdit = async () => {
+    if (!selectedPriceEntry || !currentUserId) return;
+    const priceNum = parseFloat(editPriceVal);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      Alert.alert('Precio inválido', 'Ingresa un precio válido mayor a 0');
+      return;
+    }
+
+    setSavingPrice(true);
+    try {
+      const origNum = editOrigPriceVal ? parseFloat(editOrigPriceVal) : undefined;
+      await api.updatePriceEntry(selectedPriceEntry.id, {
+        userId: currentUserId,
+        reportedPrice: priceNum,
+        originalPrice: origNum,
+        notes: editNotesVal.trim() || undefined
+      });
+
+      Alert.alert('Precio Corregido', 'Tu registro de precio ha sido actualizado correctamente.');
+      setEditPriceModalVisible(false);
+      loadHistory();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'No se pudo corregir el precio');
+    } finally {
+      setSavingPrice(false);
     }
   };
 
@@ -78,6 +174,27 @@ export const ProductPriceHistoryScreen: React.FC<ProductPriceHistoryScreenProps>
 
         <Text style={styles.productName}>{product.name}</Text>
         <Text style={styles.barcodeText}>Código: {product.barcode}</Text>
+
+        {/* Badge de Autoría / Creador */}
+        {Boolean(currentUserId && product.createdById && product.createdById === currentUserId) ? (
+          <View style={styles.creatorHeaderBadge}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.creatorBadgeTitle}>👑 Registrado por ti</Text>
+              <Text style={styles.creatorBadgeSub}>
+                Como creador de este código, tienes permiso exclusivo para corregir su nombre.
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.editProductBtn} onPress={handleOpenEditProduct}>
+              <Text style={styles.editProductBtnText}>✏️ Editar</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.communityProtectedBadge}>
+            <Text style={styles.communityProtectedText}>
+              🔒 Nombre y código protegidos por su creador ({product.createdBy?.username ? `@${product.createdBy.username}` : 'autor'}). Puedes reportar un nuevo precio abajo.
+            </Text>
+          </View>
+        )}
 
         {/* Banner de alerta si acumula 5 o más reportes de que no funciona */}
         {(product.isReportedBroken || (product.brokenReportsCount !== undefined && product.brokenReportsCount >= 5)) && (
@@ -199,6 +316,14 @@ export const ProductPriceHistoryScreen: React.FC<ProductPriceHistoryScreenProps>
                   {entry.votesCount !== undefined && (
                     <Text style={styles.entryVotes}>👍 {entry.votesCount} verificaciones</Text>
                   )}
+                  {Boolean(currentUserId && entry.userId && entry.userId === currentUserId) && (
+                    <TouchableOpacity
+                      style={styles.correctPriceBtn}
+                      onPress={() => handleOpenEditPrice(entry)}
+                    >
+                      <Text style={styles.correctPriceBtnText}>✏️ Corregir mi precio</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             </View>
@@ -231,6 +356,139 @@ export const ProductPriceHistoryScreen: React.FC<ProductPriceHistoryScreenProps>
           });
         }}
       />
+
+      {/* Modal para Editar Nombre del Producto (Sólo Creador) */}
+      <Modal
+        visible={editProductModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setEditProductModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>✏️ Editar Nombre del Producto</Text>
+              <TouchableOpacity onPress={() => setEditProductModalVisible(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSub}>
+              Como creador original de este código, puedes corregir su título si te equivocaste:
+            </Text>
+
+            <Text style={styles.inputLabel}>Nombre del Producto *</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editProductName}
+              onChangeText={setEditProductName}
+              placeholder="Ej. Pantalla Samsung 55 UHD"
+              placeholderTextColor="#64748b"
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setEditProductModalVisible(false)}
+              >
+                <Text style={styles.modalCancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalSaveBtn}
+                onPress={handleSaveProductEdit}
+                disabled={savingProduct}
+              >
+                {savingProduct ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalSaveBtnText}>Guardar Cambios</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal para Corregir Precio Registrado */}
+      <Modal
+        visible={editPriceModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setEditPriceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>✏️ Corregir Mi Registro de Precio</Text>
+              <TouchableOpacity onPress={() => setEditPriceModalVisible(false)}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSub}>
+              Corrige los datos del precio que registraste para este producto:
+            </Text>
+
+            <View style={styles.modalRow}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={styles.inputLabel}>Precio Visto ($) *</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={editPriceVal}
+                  onChangeText={setEditPriceVal}
+                  placeholder="0.00"
+                  placeholderTextColor="#64748b"
+                  keyboardType="decimal-pad"
+                />
+              </View>
+
+              <View style={{ flex: 1, marginLeft: 8 }}>
+                <Text style={styles.inputLabel}>Precio Original ($)</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={editOrigPriceVal}
+                  onChangeText={setEditOrigPriceVal}
+                  placeholder="0.00"
+                  placeholderTextColor="#64748b"
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </View>
+
+            <Text style={styles.inputLabel}>Notas adicionales</Text>
+            <TextInput
+              style={[styles.modalInput, { height: 60 }]}
+              value={editNotesVal}
+              onChangeText={setEditNotesVal}
+              placeholder="Notas de pasillo o stock..."
+              placeholderTextColor="#64748b"
+              multiline
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setEditPriceModalVisible(false)}
+              >
+                <Text style={styles.modalCancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalSaveBtn}
+                onPress={handleSavePriceEdit}
+                disabled={savingPrice}
+              >
+                {savingPrice ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalSaveBtnText}>Actualizar Precio</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -557,5 +815,147 @@ const styles = StyleSheet.create({
   entryVotes: {
     color: '#64748b',
     fontSize: 11
+  },
+  creatorHeaderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(234, 179, 8, 0.12)',
+    borderWidth: 1,
+    borderColor: '#eab308',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16
+  },
+  creatorBadgeTitle: {
+    color: '#facc15',
+    fontWeight: '800',
+    fontSize: 13,
+    marginBottom: 2
+  },
+  creatorBadgeSub: {
+    color: '#fef08a',
+    fontSize: 11,
+    lineHeight: 15
+  },
+  editProductBtn: {
+    backgroundColor: '#eab308',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8
+  },
+  editProductBtnText: {
+    color: '#0f172a',
+    fontWeight: '800',
+    fontSize: 12
+  },
+  communityProtectedBadge: {
+    backgroundColor: 'rgba(51, 65, 85, 0.5)',
+    borderWidth: 1,
+    borderColor: '#475569',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 16
+  },
+  communityProtectedText: {
+    color: '#94a3b8',
+    fontSize: 11.5,
+    lineHeight: 16
+  },
+  correctPriceBtn: {
+    backgroundColor: '#0284c7',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 6
+  },
+  correctPriceBtnText: {
+    color: '#ffffff',
+    fontSize: 10.5,
+    fontWeight: '700'
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    padding: 20
+  },
+  modalCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#334155'
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#f8fafc'
+  },
+  modalCloseText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#94a3b8',
+    padding: 4
+  },
+  modalSub: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 14,
+    lineHeight: 16
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94a3b8',
+    marginBottom: 6,
+    marginTop: 8
+  },
+  modalInput: {
+    backgroundColor: '#0f172a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    color: '#f8fafc',
+    paddingHorizontal: 12,
+    height: 44,
+    fontSize: 14
+  },
+  modalRow: {
+    flexDirection: 'row'
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    marginBottom: 4
+  },
+  modalCancelBtn: {
+    flex: 1,
+    backgroundColor: '#334155',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center'
+  },
+  modalCancelBtnText: {
+    color: '#f8fafc',
+    fontWeight: '600',
+    fontSize: 14
+  },
+  modalSaveBtn: {
+    flex: 1.5,
+    backgroundColor: '#0284c7',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center'
+  },
+  modalSaveBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14
   }
 });

@@ -16,6 +16,7 @@ interface AddPriceEntryScreenProps {
   barcode: string;
   initialData?: any; // Datos del lookup si ya existía
   currentUserId?: string;
+  initialTargetMode?: 'COMMUNITY' | 'PERSONAL';
   onSuccess: () => void;
   onCancel: () => void;
   onRequestLogin?: () => void;
@@ -25,12 +26,16 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
   barcode,
   initialData,
   currentUserId,
+  initialTargetMode = 'COMMUNITY',
   onSuccess,
   onCancel,
   onRequestLogin
 }) => {
   const isExisting = Boolean(initialData?.product);
+  const createdById = initialData?.product?.createdById || initialData?.data?.product?.createdById;
+  const isCreator = Boolean(isExisting && currentUserId && createdById === currentUserId);
 
+  const [destinationMode, setDestinationMode] = useState<'COMMUNITY' | 'PERSONAL'>(initialTargetMode);
   const [productName, setProductName] = useState(initialData?.product?.name || '');
   const [reportedPrice, setReportedPrice] = useState('');
   const [originalPrice, setOriginalPrice] = useState(
@@ -45,11 +50,11 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    // Validar que el usuario esté autenticado para registrar/compartir
+    // Validar que el usuario esté autenticado para registrar/guardar
     if (!currentUserId) {
       Alert.alert(
         'Cuenta Requerida',
-        'Para registrar o compartir un nuevo producto o liquidación en la comunidad, necesitas iniciar sesión.',
+        'Para guardar productos en tu banco privado o publicar ofertas en la comunidad, necesitas iniciar sesión.',
         [
           { text: 'Cancelar', style: 'cancel' },
           {
@@ -63,7 +68,7 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
       return;
     }
 
-    if (!isExisting && !productName.trim()) {
+    if ((!isExisting || isCreator) && !productName.trim()) {
       Alert.alert('Faltan Datos', 'Por favor ingresa el nombre del producto.');
       return;
     }
@@ -74,33 +79,55 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
       return;
     }
 
-    if (!storeName.trim() || !storeBranch.trim()) {
-      Alert.alert('Faltan Datos', 'Ingresa la tienda y la sucursal donde encontraste la oferta.');
-      return;
-    }
-
     setLoading(true);
     try {
-      const response = await api.addPriceEntry({
-        barcode,
-        productName: isExisting ? undefined : productName.trim(),
-        reportedPrice: priceNum,
-        originalPrice: originalPrice ? parseFloat(originalPrice) : undefined,
-        storeName: storeName.trim(),
-        storeBranch: storeBranch.trim(),
-        priceType,
-        notes: notes.trim() || undefined,
-        userId: currentUserId
-      });
+      if (destinationMode === 'PERSONAL') {
+        // Guardar exclusivamente en el banco privado del usuario
+        await api.savePersonalBarcode({
+          userId: currentUserId,
+          barcode,
+          name: productName.trim() || initialData?.product?.name || 'Producto personal',
+          price: priceNum,
+          originalPrice: originalPrice ? parseFloat(originalPrice) : undefined,
+          storeName: storeName.trim() || undefined,
+          storeBranch: storeBranch.trim() || undefined,
+          notes: notes.trim() || undefined
+        });
 
-      Alert.alert(
-        '🎉 ¡Liquidación Registrada!',
-        response.comparison?.message || 'Tu aporte ha sido agregado a la bitácora comunitaria.',
-        [{ text: 'Aceptar', onPress: onSuccess }]
-      );
+        Alert.alert(
+          '🔒 Guardado en Mi Banco',
+          'El código de barras se ha guardado en tu colección personal privada. Puedes consultarlo o publicarlo cuando quieras.',
+          [{ text: 'Aceptar', onPress: onSuccess }]
+        );
+      } else {
+        // Publicar en la comunidad general
+        if (!storeName.trim() || !storeBranch.trim()) {
+          setLoading(false);
+          Alert.alert('Faltan Datos', 'Ingresa la tienda y la sucursal donde encontraste la oferta.');
+          return;
+        }
+
+        const response = await api.addPriceEntry({
+          barcode,
+          productName: !isExisting || isCreator ? productName.trim() : undefined,
+          reportedPrice: priceNum,
+          originalPrice: originalPrice ? parseFloat(originalPrice) : undefined,
+          storeName: storeName.trim(),
+          storeBranch: storeBranch.trim(),
+          priceType,
+          notes: notes.trim() || undefined,
+          userId: currentUserId
+        });
+
+        Alert.alert(
+          '🎉 ¡Liquidación Publicada!',
+          response.comparison?.message || 'Tu aporte ha sido publicado para la comunidad de cazadores (+10 pts).',
+          [{ text: 'Aceptar', onPress: onSuccess }]
+        );
+      }
     } catch (err: any) {
       console.error('Error al guardar precio:', err);
-      Alert.alert('Error', err.message || 'No se pudo guardar la liquidación.');
+      Alert.alert('Error', err.message || 'No se pudo guardar la información.');
     } finally {
       setLoading(false);
     }
@@ -114,9 +141,59 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
         </TouchableOpacity>
 
         <Text style={styles.title}>
-          {isExisting ? 'Actualizar Precio de Liquidación' : 'Registrar Nuevo Producto'}
+          {destinationMode === 'PERSONAL'
+            ? 'Guardar en Mi Banco Propio'
+            : isExisting
+            ? 'Actualizar Precio de Liquidación'
+            : 'Publicar Nuevo Producto en Comunidad'}
         </Text>
         <Text style={styles.barcodeLabel}>Código: {barcode}</Text>
+
+        {/* Selector de Destino: Comunidad vs Mi Banco Propio */}
+        <View style={styles.destinationTabs}>
+          <TouchableOpacity
+            style={[
+              styles.destTab,
+              destinationMode === 'COMMUNITY' && styles.destTabActive
+            ]}
+            onPress={() => setDestinationMode('COMMUNITY')}
+          >
+            <Text
+              style={[
+                styles.destTabText,
+                destinationMode === 'COMMUNITY' && styles.destTabTextActive
+              ]}
+            >
+              🌐 Publicar a Comunidad
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.destTab,
+              destinationMode === 'PERSONAL' && styles.destTabActivePersonal
+            ]}
+            onPress={() => setDestinationMode('PERSONAL')}
+          >
+            <Text
+              style={[
+                styles.destTabText,
+                destinationMode === 'PERSONAL' && styles.destTabTextActive
+              ]}
+            >
+              🔒 Mi Banco Privado
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Banner informativo del modo seleccionado */}
+        <View style={[styles.destInfoCard, destinationMode === 'PERSONAL' ? styles.destInfoPersonal : styles.destInfoCommunity]}>
+          <Text style={styles.destInfoText}>
+            {destinationMode === 'PERSONAL'
+              ? '🔒 Este código se guardará exclusivamente para ti. Podrás usarlo en el checador y decidir más tarde si lo publicas.'
+              : '🌐 Esta oferta será compartida en el Banco de Ofertas para que toda la comunidad la vea (+10 puntos de reputación).'}
+          </Text>
+        </View>
 
         {/* Banner de inicio de sesión obligatorio */}
         {!currentUserId && (
@@ -129,14 +206,14 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
             <View style={{ flex: 1 }}>
               <Text style={styles.guestWarningTitle}>Inicio de Sesión Requerido</Text>
               <Text style={styles.guestWarningSubtitle}>
-                Los productos y liquidaciones se asignan a tu perfil de cazador (+10 pts). Toca aquí para iniciar sesión.
+                Para registrar en tu banco o en la comunidad necesitas iniciar sesión con tu cuenta. Toca aquí para ingresar.
               </Text>
             </View>
           </TouchableOpacity>
         )}
 
         {/* Notificación si ya existía en la base de datos */}
-        {isExisting && initialData.latestPriceEntry && (
+        {isExisting && initialData.latestPriceEntry && destinationMode === 'COMMUNITY' && (
           <View style={styles.existingNotice}>
             <Text style={styles.noticeIcon}>ℹ️</Text>
             <View style={{ flex: 1 }}>
@@ -152,8 +229,15 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
         )}
 
         {/* Nombre del Producto */}
-        {!isExisting ? (
+        {!isExisting || destinationMode === 'PERSONAL' || isCreator ? (
           <View style={styles.field}>
+            {isCreator && isExisting && (
+              <View style={styles.creatorBanner}>
+                <Text style={styles.creatorBannerText}>
+                  👑 Creado por ti: Puedes corregir el nombre si te equivocaste originalmente.
+                </Text>
+              </View>
+            )}
             <Text style={styles.label}>Nombre del Producto *</Text>
             <TextInput
               style={styles.input}
@@ -165,6 +249,9 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
           </View>
         ) : (
           <View style={styles.existingProductBanner}>
+            <Text style={styles.existingProductProtect}>
+              🔒 Nombre protegido por su creador ({initialData?.product?.createdBy?.username ? `@${initialData.product.createdBy.username}` : 'autor'})
+            </Text>
             <Text style={styles.existingProductLabel}>Producto:</Text>
             <Text style={styles.existingProductName}>{initialData.product.name}</Text>
           </View>
@@ -276,10 +363,12 @@ export const AddPriceEntryScreen: React.FC<AddPriceEntryScreenProps> = ({
           ) : (
             <Text style={styles.submitBtnText}>
               {!currentUserId
-                ? '🔒 Iniciar Sesión para Registrar'
+                ? '🔒 Iniciar Sesión para Guardar'
+                : destinationMode === 'PERSONAL'
+                ? '🔒 Guardar en Mi Banco Personal'
                 : isExisting
-                ? 'Guardar Nuevo Precio en Historial'
-                : 'Crear Producto y Guardar Precio'}
+                ? '🌐 Publicar Nuevo Precio en Historial'
+                : '🌐 Publicar Producto y Liquidación'}
             </Text>
           )}
         </TouchableOpacity>
@@ -458,5 +547,73 @@ const styles = StyleSheet.create({
     color: '#fde047',
     fontSize: 12.5,
     lineHeight: 17
+  },
+  destinationTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#334155'
+  },
+  destTab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8
+  },
+  destTabActive: {
+    backgroundColor: '#0284c7'
+  },
+  destTabActivePersonal: {
+    backgroundColor: '#059669'
+  },
+  destTabText: {
+    color: '#94a3b8',
+    fontWeight: '700',
+    fontSize: 13
+  },
+  destTabTextActive: {
+    color: '#ffffff'
+  },
+  destInfoCard: {
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
+    borderWidth: 1
+  },
+  destInfoCommunity: {
+    backgroundColor: 'rgba(2, 132, 199, 0.1)',
+    borderColor: 'rgba(2, 132, 199, 0.3)'
+  },
+  destInfoPersonal: {
+    backgroundColor: 'rgba(5, 150, 105, 0.1)',
+    borderColor: 'rgba(5, 150, 105, 0.3)'
+  },
+  destInfoText: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    lineHeight: 17
+  },
+  creatorBanner: {
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
+    borderWidth: 1,
+    borderColor: '#eab308',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8
+  },
+  creatorBannerText: {
+    color: '#facc15',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  existingProductProtect: {
+    color: '#38bdf8',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 4
   }
 });
+

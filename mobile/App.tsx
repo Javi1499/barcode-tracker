@@ -4,16 +4,18 @@ import { ScannerScreen } from './src/screens/ScannerScreen';
 import { ProductPriceHistoryScreen } from './src/screens/ProductPriceHistoryScreen';
 import { AddPriceEntryScreen } from './src/screens/AddPriceEntryScreen';
 import { CommunityDealsScreen } from './src/screens/CommunityDealsScreen';
+import { PersonalBarcodesScreen } from './src/screens/PersonalBarcodesScreen';
 import { LoginModal } from './src/components/LoginModal';
 import { UserProfileModal } from './src/components/UserProfileModal';
 import { AuthService, UserProfile } from './src/services/authService';
 
-type ScreenState = 'SCANNER' | 'HISTORY' | 'ADD_PRICE' | 'COMMUNITY';
+type ScreenState = 'SCANNER' | 'HISTORY' | 'ADD_PRICE' | 'COMMUNITY' | 'MY_BANK';
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenState>('SCANNER');
   const [activeBarcode, setActiveBarcode] = useState<string>('');
   const [barcodeLookupData, setBarcodeLookupData] = useState<any>(null);
+  const [addPriceTargetMode, setAddPriceTargetMode] = useState<'COMMUNITY' | 'PERSONAL'>('COMMUNITY');
 
   // Estados de Autenticación Social (Google, Facebook, Apple)
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -27,14 +29,34 @@ export default function App() {
     });
   }, []);
 
-  // Cuando se detecta un código desde cámara, galería o manual
+  // Cuando se detecta un código para publicar en la comunidad
   const handleBarcodeDetected = (barcode: string, lookupData?: any) => {
     setActiveBarcode(barcode);
     setBarcodeLookupData(lookupData);
+    setAddPriceTargetMode('COMMUNITY');
     if (!currentUser) {
       Alert.alert(
         'Cuenta Requerida',
         'Para agregar un producto o compartir una liquidación necesitas iniciar sesión, ya que los aportes y reputación se asignan a tu cuenta.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Iniciar Sesión', onPress: () => setLoginModalVisible(true) }
+        ]
+      );
+      return;
+    }
+    setCurrentScreen('ADD_PRICE');
+  };
+
+  // Cuando se elige guardar en el banco propio privado
+  const handleSaveToPersonalBank = (barcode: string, lookupData?: any) => {
+    setActiveBarcode(barcode);
+    setBarcodeLookupData(lookupData);
+    setAddPriceTargetMode('PERSONAL');
+    if (!currentUser) {
+      Alert.alert(
+        'Cuenta Requerida',
+        'Para guardar códigos en tu banco privado necesitas iniciar sesión.',
         [
           { text: 'Cancelar', style: 'cancel' },
           { text: 'Iniciar Sesión', onPress: () => setLoginModalVisible(true) }
@@ -92,13 +114,23 @@ export default function App() {
         {currentScreen === 'SCANNER' && (
           <ScannerScreen
             onBarcodeDetected={handleBarcodeDetected}
+            onSaveToPersonalBank={handleSaveToPersonalBank}
             onViewHistory={handleSelectFromCommunity}
+          />
+        )}
+
+        {currentScreen === 'MY_BANK' && (
+          <PersonalBarcodesScreen
+            currentUserId={currentUser?.id}
+            onRequestLogin={() => setLoginModalVisible(true)}
+            onOpenHistory={handleSelectFromCommunity}
           />
         )}
 
         {currentScreen === 'HISTORY' && (
           <ProductPriceHistoryScreen
             barcode={activeBarcode}
+            currentUserId={currentUser?.id}
             onAddNewPrice={() => {
               if (!currentUser) {
                 Alert.alert(
@@ -111,6 +143,7 @@ export default function App() {
                 );
                 return;
               }
+              setAddPriceTargetMode('COMMUNITY');
               setCurrentScreen('ADD_PRICE');
             }}
             onBack={() => setCurrentScreen('SCANNER')}
@@ -122,8 +155,15 @@ export default function App() {
             barcode={activeBarcode}
             initialData={barcodeLookupData}
             currentUserId={currentUser?.id}
+            initialTargetMode={addPriceTargetMode}
             onRequestLogin={() => setLoginModalVisible(true)}
-            onSuccess={() => setCurrentScreen('HISTORY')}
+            onSuccess={() => {
+              if (addPriceTargetMode === 'PERSONAL') {
+                setCurrentScreen('MY_BANK');
+              } else {
+                setCurrentScreen('HISTORY');
+              }
+            }}
             onCancel={() => setCurrentScreen('SCANNER')}
           />
         )}
@@ -146,12 +186,22 @@ export default function App() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.navTab, currentScreen === 'MY_BANK' && styles.activeTab]}
+          onPress={() => setCurrentScreen('MY_BANK')}
+        >
+          <Text style={styles.tabIcon}>🗂️</Text>
+          <Text style={[styles.tabLabel, currentScreen === 'MY_BANK' && styles.activeLabel]}>
+            Mi Banco
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.navTab, currentScreen === 'COMMUNITY' && styles.activeTab]}
           onPress={() => setCurrentScreen('COMMUNITY')}
         >
           <Text style={styles.tabIcon}>🏷️</Text>
           <Text style={[styles.tabLabel, currentScreen === 'COMMUNITY' && styles.activeLabel]}>
-            Banco de Ofertas
+            Banco Ofertas
           </Text>
         </TouchableOpacity>
 

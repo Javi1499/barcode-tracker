@@ -17,6 +17,9 @@ export async function lookupBarcode(req: Request, res: Response) {
     const product = await prisma.product.findUnique({
       where: { barcode: barcode.trim() },
       include: {
+        createdBy: {
+          select: { id: true, username: true }
+        },
         priceEntries: {
           orderBy: { createdAt: 'desc' },
           take: 5,
@@ -62,6 +65,11 @@ export async function lookupBarcode(req: Request, res: Response) {
           name: product.name,
           brand: product.brand,
           category: product.category,
+          createdById: product.createdById,
+          createdBy: product.createdBy ? {
+            id: product.createdBy.id,
+            username: product.createdBy.username
+          } : null,
           workingVotesCount: product.workingVotesCount,
           brokenReportsCount: product.brokenReportsCount,
           isReportedBroken: product.brokenReportsCount >= 5
@@ -252,3 +260,74 @@ export async function submitBarcodeFeedback(req: Request, res: Response) {
     });
   }
 }
+
+/**
+ * Permite actualizar el nombre, marca o categoría del producto.
+ * REGLA ESTRICTA: Sólo la persona que creó el código/producto puede editar su nombre o información.
+ * Cualquier otro usuario sólo tiene permitido registrar nuevos precios.
+ */
+export async function updateProduct(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { userId, name, brand, category, description } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Debes iniciar sesión para editar el producto'
+      });
+    }
+
+    const product = await prisma.product.findFirst({
+      where: {
+        OR: [
+          { id },
+          { barcode: id }
+        ]
+      },
+      include: {
+        createdBy: { select: { id: true, username: true } }
+      }
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Producto no encontrado'
+      });
+    }
+
+    // Regla de Permisos: Si tiene creador y no coincide con el usuario actual, rechazar
+    if (product.createdById && product.createdById !== userId) {
+      const creatorName = product.createdBy?.username ? `@${product.createdBy.username}` : 'su creador';
+      return res.status(403).json({
+        success: false,
+        message: `Este producto fue registrado por ${creatorName}. Únicamente su creador puede editar el nombre o código de barras. Puedes agregar un nuevo precio de liquidación.`
+      });
+    }
+
+    const updated = await prisma.product.update({
+      where: { id: product.id },
+      data: {
+        name: name ? String(name).trim() : product.name,
+        brand: brand !== undefined ? (brand ? String(brand).trim() : null) : product.brand,
+        category: category !== undefined ? (category ? String(category).trim() : null) : product.category,
+        description: description !== undefined ? (description ? String(description).trim() : null) : product.description,
+        createdById: product.createdById || userId
+      }
+    });
+
+    return res.json({
+      success: true,
+      message: 'Producto actualizado exitosamente por su creador',
+      data: updated
+    });
+  } catch (error) {
+    console.error('Error al actualizar producto:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error al actualizar el producto'
+    });
+  }
+}
+

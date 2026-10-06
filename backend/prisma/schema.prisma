@@ -32,8 +32,10 @@ model User {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
-  priceEntries PriceEntry[]
-  votes        CommunityVote[]
+  priceEntries     PriceEntry[]
+  votes            CommunityVote[]
+  createdProducts  Product[]         @relation("UserCreatedProducts")
+  personalBarcodes PersonalBarcode[]
 
   @@map("users")
 }
@@ -46,6 +48,8 @@ model Product {
   category           String?         // Electrónica, Juguetería, Alimentos, etc.
   description        String?
   imageUrl           String?
+  createdById        String?         // Usuario creador original que tiene permisos de edición
+  createdBy          User?           @relation("UserCreatedProducts", fields: [createdById], references: [id], onDelete: SetNull)
   workingVotesCount  Int             @default(0)
   brokenReportsCount Int             @default(0)
   createdAt          DateTime        @default(now())
@@ -57,7 +61,31 @@ model Product {
 
   @@index([barcode])
   @@index([name])
+  @@index([createdById])
   @@map("products")
+}
+
+model PersonalBarcode {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  barcode       String
+  name          String
+  brand         String?
+  category      String?
+  price         Decimal?  @db.Decimal(10, 2)
+  originalPrice Decimal?  @db.Decimal(10, 2)
+  storeName     String?
+  storeBranch   String?
+  notes         String?
+  isPublished   Boolean   @default(false)
+  productId     String?   // Vinculado a Product si ya fue publicado en la comunidad
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([barcode])
+  @@map("personal_barcodes")
 }
 
 model BarcodeReport {

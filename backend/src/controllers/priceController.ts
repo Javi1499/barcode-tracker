@@ -106,7 +106,8 @@ export async function addPriceEntry(req: Request, res: Response) {
           barcode: barcode.trim(),
           name: productName.trim(),
           brand: brand?.trim(),
-          category: category?.trim()
+          category: category?.trim(),
+          createdById: userRecord.id // Creador original con permisos de edición
         },
         include: {
           priceEntries: {
@@ -114,6 +115,25 @@ export async function addPriceEntry(req: Request, res: Response) {
           }
         }
       });
+    } else {
+      // Si el producto ya existía:
+      // Sólo si el usuario actual es el creador original (o no tenía creador), puede actualizar el nombre si se equivocó
+      if ((!product.createdById || product.createdById === userRecord.id) && productName && productName.trim() !== product.name) {
+        product = await prisma.product.update({
+          where: { id: product.id },
+          data: {
+            name: productName.trim(),
+            brand: brand?.trim() || product.brand,
+            category: category?.trim() || product.category,
+            createdById: product.createdById || userRecord.id
+          },
+          include: {
+            priceEntries: {
+              include: { store: true }
+            }
+          }
+        });
+      }
     }
 
     // 3. Calcular porcentaje de descuento
@@ -229,6 +249,9 @@ export async function getProductPriceHistory(req: Request, res: Response) {
     const product = await prisma.product.findUnique({
       where: { barcode },
       include: {
+        createdBy: {
+          select: { id: true, username: true, name: true }
+        },
         priceEntries: {
           orderBy: { createdAt: 'desc' },
           include: {
@@ -266,6 +289,12 @@ export async function getProductPriceHistory(req: Request, res: Response) {
           name: product.name,
           brand: product.brand,
           category: product.category,
+          createdById: product.createdById,
+          createdBy: product.createdBy ? {
+            id: product.createdBy.id,
+            username: product.createdBy.username,
+            name: product.createdBy.name
+          } : null,
           workingVotesCount: product.workingVotesCount,
           brokenReportsCount: product.brokenReportsCount,
           isReportedBroken: product.brokenReportsCount >= 5
@@ -288,10 +317,13 @@ export async function getProductPriceHistory(req: Request, res: Response) {
           discountPercent: entry.discountPercent,
           priceType: entry.priceType,
           store: `${entry.store.name} - ${entry.store.branch}`,
+          storeName: entry.store.name,
+          storeBranch: entry.store.branch,
           city: entry.store.city,
           notes: entry.notes,
           photoProofUrl: entry.photoProofUrl,
           createdAt: entry.createdAt,
+          userId: entry.userId,
           user: entry.user.username,
           votesCount: entry._count.votes
         }))
@@ -305,3 +337,87 @@ export async function getProductPriceHistory(req: Request, res: Response) {
     });
   }
 }
+
+/**
+ * Permite que el cazador que registró un precio lo edite si se equivocó
+ */
+export async function updatePriceEntry(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const { userId, reportedPrice, originalPrice, notes, priceType, storeName, storeBranch } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Usuario no autenticado' });
+    }
+
+    const entry = await prisma.priceEntry.findUnique({
+      where: { id },
+      include: { store: true }
+    });
+
+    if (!entry) {
+      return res.status(404).json({ success: false, message: 'Registro de precio no encontrado' });
+    }
+
+    if (entry.userId !== userId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Sólo la persona que registró este precio puede modificarlo. La comunidad sólo puede agregar un nuevo precio.'
+      });
+    }
+
+    let storeId = entry.storeId;
+    if (storeName && storeBranch) {
+      const store = await prisma.store.upsert({
+        where: {
+          store_branch_unique: {
+            name: storeName.trim(),
+            branch: storeBranch.trim()
+          }
+        },
+        update: {},
+        create: {
+          name: storeName.trim(),
+          branch: storeBranch.trim()
+        }
+      });
+      storeId = store.id;
+    }
+
+    const priceNum = reportedPrice ? Number(reportedPrice) : Number(entry.reportedPrice);
+    const origNum = originalPrice !== undefined
+      ? (originalPrice ? Number(originalPrice) : null)
+      : (entry.originalPrice ? Number(entry.originalPrice) : null);
+
+    let calculatedDiscount = null;
+    if (origNum && origNum > priceNum) {
+      calculatedDiscount = Math.round(((origNum - priceNum) / origNum) * 100 * 10) / 10;
+    }
+
+    const updated = await prisma.priceEntry.update({
+      where: { id },
+      data: {
+        reportedPrice: priceNum,
+        originalPrice: origNum,
+        discountPercent: calculatedDiscount,
+        notes: notes !== undefined ? notes : entry.notes,
+        priceType: priceType || entry.priceType,
+        storeId
+      },
+      include: {
+        store: true,
+        user: { select: { id: true, username: true } }
+      }
+    });
+
+    return res.json({
+      success: true,
+      message: 'Precio corregido exitosamente',
+      data: updated
+    });
+  } catch (error) {
+    console.error('Error al actualizar precio:', error);
+    return res.status(500).json({ success: false, message: 'Error interno al actualizar el precio' });
+  }
+}
+

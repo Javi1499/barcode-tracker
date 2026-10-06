@@ -21,10 +21,12 @@ export interface PriceEntry {
   discountPercent?: number | null;
   priceType: PriceType;
   store: string;
+  storeBranch?: string;
   city?: string;
   notes?: string;
   photoProofUrl?: string;
   createdAt: string;
+  userId?: string;
   user: string;
   votesCount?: number;
 }
@@ -35,6 +37,13 @@ export interface ProductDetails {
   name: string;
   brand?: string;
   category?: string;
+  description?: string;
+  createdById?: string;
+  createdBy?: {
+    id: string;
+    username: string;
+    name?: string;
+  } | null;
   workingVotesCount?: number;
   brokenReportsCount?: number;
   isReportedBroken?: boolean;
@@ -95,3 +104,46 @@ export interface AddPriceEntryPayload {
   photoProofUrl?: string;
   userId: string;
 }
+
+export interface PersonalBarcodeItem {
+  id: string;
+  barcode: string;
+  name: string;
+  brand?: string | null;
+  category?: string | null;
+  price?: number | null;
+  originalPrice?: number | null;
+  storeName?: string | null;
+  storeBranch?: string | null;
+  notes?: string | null;
+  isPublished: boolean;
+  productId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavePersonalBarcodePayload {
+  userId: string;
+  barcode: string;
+  name: string;
+  brand?: string;
+  category?: string;
+  price?: number;
+  originalPrice?: number;
+  storeName?: string;
+  storeBranch?: string;
+  notes?: string;
+}
+
+export interface UpdatePersonalBarcodePayload {
+  userId: string;
+  name?: string;
+  brand?: string;
+  category?: string;
+  price?: number | null;
+  originalPrice?: number | null;
+  storeName?: string | null;
+  storeBranch?: string | null;
+  notes?: string | null;
+}
+

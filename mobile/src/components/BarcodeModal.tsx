@@ -30,6 +30,7 @@ interface BarcodeModalProps {
   productName?: string;
   showSaveActions?: boolean;
   onConfirmAndRegister?: (verifiedCode: string) => void;
+  onSaveToPersonalBank?: (verifiedCode: string) => void;
   onViewHistory?: (verifiedCode: string) => void;
   readOnly?: boolean;
   brokenReportsCount?: number;
@@ -80,6 +81,7 @@ export const BarcodeModal: React.FC<BarcodeModalProps> = ({
   productName,
   showSaveActions = false,
   onConfirmAndRegister,
+  onSaveToPersonalBank,
   onViewHistory,
   readOnly = false,
   brokenReportsCount,
@@ -592,24 +594,41 @@ export const BarcodeModal: React.FC<BarcodeModalProps> = ({
             {showSaveActions && (
               <View style={styles.hunterDecisionCard}>
                 <Text style={styles.hunterDecisionTitle}>
-                  ¿Qué precio mostró el checador de la tienda?
+                  ¿Qué deseas hacer con este código?
                 </Text>
                 <Text style={styles.hunterDecisionSub}>
-                  Pasa el código anterior por la terminal de la tienda. Si lo leyó y viste la liquidación, regístrala en la app:
+                  Pasa el código por el checador físico. Cuando lo lea la terminal, elige cómo guardarlo:
                 </Text>
 
+                {/* Opción 1: Publicar a la comunidad */}
                 <TouchableOpacity
                   style={styles.confirmRegisterBtn}
                   onPress={() => onConfirmAndRegister && onConfirmAndRegister(activeCode)}
                 >
                   <Text style={styles.confirmRegisterBtnText}>
-                    ✅ Sí lo leyó el verificador → Registrar Precio
+                    🌐 Publicar en la Comunidad
                   </Text>
                   <Text style={styles.confirmRegisterBtnSubtext}>
-                    Guardar reporte físico para la comunidad
+                    Compartir liquidación con todos los cazadores (+10 pts)
                   </Text>
                 </TouchableOpacity>
 
+                {/* Opción 2: Guardar en Mi Banco Personal (Privado) */}
+                {onSaveToPersonalBank && (
+                  <TouchableOpacity
+                    style={styles.savePersonalBtn}
+                    onPress={() => onSaveToPersonalBank(activeCode)}
+                  >
+                    <Text style={styles.savePersonalBtnText}>
+                      🔒 Guardar en Mi Banco Propio
+                    </Text>
+                    <Text style={styles.savePersonalBtnSubtext}>
+                      Guardar para ti en privado y decidir después si publicarlo
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Opción 3: Consultar historial */}
                 {onViewHistory && (
                   <TouchableOpacity
                     style={styles.viewHistoryBtn}
@@ -1113,6 +1132,24 @@ const styles = StyleSheet.create({
   },
   confirmRegisterBtnSubtext: {
     color: '#bbf7d0',
+    fontSize: 11,
+    marginTop: 2
+  },
+  savePersonalBtn: {
+    backgroundColor: '#0284c7',
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 8
+  },
+  savePersonalBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  savePersonalBtnSubtext: {
+    color: '#bae6fd',
     fontSize: 11,
     marginTop: 2
   },
