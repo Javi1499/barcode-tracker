@@ -15,6 +15,7 @@ import { BarcodeScannerService } from '../services/barcodeScannerService';
 import { api } from '../services/api';
 import { analyzeAndFormatBarcode } from '../utils/barcodeFormatter';
 import { BarcodeModal } from '../components/BarcodeModal';
+import { playScanBeep, initSoundService, setSoundEnabled } from '../services/soundService';
 
 const { width } = Dimensions.get('window');
 const SCAN_BOX_SIZE = Math.min(width * 0.75, 280);
@@ -55,6 +56,21 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
   const [verificationModalVisible, setVerificationModalVisible] = useState(false);
   const [detectedCode, setDetectedCode] = useState('');
   const [scanOrigin, setScanOrigin] = useState<'camera' | 'gallery'>('camera');
+
+  // Estado y preferencia del bip de escaneo (verificador de precio)
+  const [soundEnabled, setSoundEnabledState] = useState(true);
+
+  useEffect(() => {
+    initSoundService().then(enabled => {
+      setSoundEnabledState(enabled);
+    });
+  }, []);
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabledState(next);
+    setSoundEnabled(next);
+  };
 
   // Limpiar temporizador al desmontar
   useEffect(() => {
@@ -139,6 +155,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
     setIsScanningActive(false);
 
     console.log('📷 Código detectado por cámara:', result.data, result.type);
+    playScanBeep();
     setScanned(true);
     setDetectedCode(result.data ? result.data.trim() : '');
     setScanOrigin('camera');
@@ -152,6 +169,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
     setIsLoading(false);
 
     if (extractedBarcode) {
+      playScanBeep();
       setScanned(true);
       setDetectedCode(extractedBarcode.trim());
       setScanOrigin('gallery');
@@ -342,6 +360,14 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
             >
               <Text style={styles.actionIcon}>{flashEnabled ? '🔦 ON' : '💡 Flash'}</Text>
               <Text style={styles.actionSubtext}>Linterna</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionIconButton, !soundEnabled && styles.actionIconMuted]}
+              onPress={toggleSound}
+            >
+              <Text style={styles.actionIcon}>{soundEnabled ? '🔊 Bip' : '🔇 Mudo'}</Text>
+              <Text style={styles.actionSubtext}>{soundEnabled ? 'Sonido ON' : 'Sonido OFF'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -779,17 +805,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    gap: 10
+    gap: 6
   },
   actionIconButton: {
     flex: 1,
     backgroundColor: '#1e293b',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
     borderRadius: 14,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#334155'
+  },
+  actionIconMuted: {
+    backgroundColor: '#0f172a',
+    borderColor: '#334155',
+    opacity: 0.75
   },
   galleryButton: {
     borderColor: '#38bdf8'
