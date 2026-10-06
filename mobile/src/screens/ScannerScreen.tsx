@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -36,6 +36,11 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
 
+  // Modo de escaneo: 'MANUAL' (con botón disparador, evita falsos escaneos) vs 'AUTO' (continuo)
+  const [scanMode, setScanMode] = useState<'MANUAL' | 'AUTO'>('MANUAL');
+  const [isScanningActive, setIsScanningActive] = useState(false);
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Estados para el visor previo del código (flujo de verificación de checador)
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
   const [previewBarcode, setPreviewBarcode] = useState('');
@@ -50,6 +55,15 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
   const [verificationModalVisible, setVerificationModalVisible] = useState(false);
   const [detectedCode, setDetectedCode] = useState('');
   const [scanOrigin, setScanOrigin] = useState<'camera' | 'gallery'>('camera');
+
+  // Limpiar temporizador al desmontar
+  useEffect(() => {
+    return () => {
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Solicitar permisos al montar
   useEffect(() => {
@@ -90,9 +104,40 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
     }
   };
 
+  // Disparador manual para capturar el código enfocado a propósito
+  const handleTriggerScan = () => {
+    if (scanned || isLoading) return;
+    setIsScanningActive(true);
+
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current);
+    }
+
+    scanTimeoutRef.current = setTimeout(() => {
+      setIsScanningActive(false);
+      Alert.alert(
+        'Código no detectado',
+        'No se detectó un código claro en el recuadro. Acerca la cámara, ajusta el enfoque o prueba encender la linterna.',
+        [{ text: 'Entendido' }]
+      );
+    }, 4500);
+  };
+
   // 1. Escaneo en vivo con Cámara -> Primero abre verificación/edición
   const handleCameraBarcodeScanned = (result: BarcodeScanningResult) => {
     if (scanned || isLoading) return;
+
+    // Si está en modo manual, sólo procesar si el usuario presionó el botón disparador
+    if (scanMode === 'MANUAL' && !isScanningActive) {
+      return;
+    }
+
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current);
+      scanTimeoutRef.current = null;
+    }
+    setIsScanningActive(false);
+
     console.log('📷 Código detectado por cámara:', result.data, result.type);
     setScanned(true);
     setDetectedCode(result.data ? result.data.trim() : '');
@@ -157,6 +202,8 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
     );
   }
 
+  const isScanningEnabled = isCameraReady && !scanned && (scanMode === 'AUTO' || isScanningActive);
+
   return (
     <View style={styles.container}>
       {/* Visor de Cámara de Pantalla Completa con inicialización en 2 fases para Android CameraX */}
@@ -170,7 +217,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
           setIsCameraReady(true);
         }}
         barcodeScannerSettings={
-          isCameraReady
+          isScanningEnabled
             ? {
                 barcodeTypes: [
                   'ean13',
@@ -185,7 +232,7 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
             : undefined
         }
         onBarcodeScanned={
-          isCameraReady && !scanned ? handleCameraBarcodeScanned : undefined
+          isScanningEnabled ? handleCameraBarcodeScanned : undefined
         }
       />
 
@@ -195,18 +242,55 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
         <View style={styles.topHeader}>
           <Text style={styles.headerTitle}>Cazador de Liquidaciones</Text>
           <Text style={styles.headerSubtitle}>
-            Apunta al código del producto o etiqueta de cenefa
+            {scanMode === 'MANUAL'
+              ? 'Centra las barras en el recuadro y presiona "Capturar Código"'
+              : 'Escaneando automáticamente lo que entra en cámara...'}
           </Text>
+
+          {/* Selector de Modo: Con Botón (Manual) vs Automático */}
+          <View style={styles.modeSwitchRow}>
+            <TouchableOpacity
+              style={[styles.modePill, scanMode === 'MANUAL' && styles.modePillActive]}
+              onPress={() => {
+                setScanMode('MANUAL');
+                setIsScanningActive(false);
+              }}
+            >
+              <Text style={[styles.modePillText, scanMode === 'MANUAL' && styles.modePillTextActive]}>
+                🎯 Con Botón (Evita errores)
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modePill, scanMode === 'AUTO' && styles.modePillActive]}
+              onPress={() => {
+                setScanMode('AUTO');
+                setIsScanningActive(false);
+              }}
+            >
+              <Text style={[styles.modePillText, scanMode === 'AUTO' && styles.modePillTextActive]}>
+                ⚡ Automático
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Zona Central de Escaneo: 100% Transparente para que la cámara se vea clara */}
         <View style={styles.centerTargetArea}>
           <View style={styles.scanTargetBox}>
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
-            <View style={styles.redLaserLine} />
+            <View style={[styles.corner, styles.topLeft, isScanningActive && styles.cornerActive]} />
+            <View style={[styles.corner, styles.topRight, isScanningActive && styles.cornerActive]} />
+            <View style={[styles.corner, styles.bottomLeft, isScanningActive && styles.cornerActive]} />
+            <View style={[styles.corner, styles.bottomRight, isScanningActive && styles.cornerActive]} />
+            <View style={[styles.redLaserLine, isScanningActive && styles.greenLaserLine]} />
+
+            <View style={styles.aimBoxLabelContainer}>
+              <Text style={[styles.aimBoxLabel, isScanningActive && styles.aimBoxLabelActive]}>
+                {isScanningActive
+                  ? '⚡ Escaneando código enfocado...'
+                  : 'Centra aquí el código'}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -217,6 +301,37 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
               <ActivityIndicator color="#38bdf8" style={{ marginRight: 8 }} />
               <Text style={styles.loadingText}>Consultando banco de ofertas...</Text>
             </View>
+          )}
+
+          {/* Botón Principal Disparador para Modo Manual */}
+          {scanMode === 'MANUAL' && !scanned && (
+            <TouchableOpacity
+              style={[
+                styles.shutterButton,
+                isScanningActive && styles.shutterButtonScanning
+              ]}
+              onPress={handleTriggerScan}
+              disabled={isLoading}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.shutterIconCircle, isScanningActive && styles.shutterIconCircleScanning]}>
+                {isScanningActive ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <Text style={styles.shutterIconText}>📸</Text>
+                )}
+              </View>
+              <View style={styles.shutterTextContainer}>
+                <Text style={styles.shutterButtonTitle}>
+                  {isScanningActive ? 'Capturando código...' : 'Capturar Código'}
+                </Text>
+                <Text style={styles.shutterButtonSubtitle}>
+                  {isScanningActive
+                    ? 'Mantén el código fijo en el recuadro'
+                    : 'Toca aquí una vez enfocado el código'}
+                </Text>
+              </View>
+            </TouchableOpacity>
           )}
 
           {/* Barra de Acciones */}
@@ -249,7 +364,10 @@ export const ScannerScreen: React.FC<ScannerScreenProps> = ({
           {scanned && !isLoading && (
             <TouchableOpacity
               style={styles.rescanButton}
-              onPress={() => setScanned(false)}
+              onPress={() => {
+                setScanned(false);
+                setIsScanningActive(false);
+              }}
             >
               <Text style={styles.rescanButtonText}>Toca para volver a escanear</Text>
             </TouchableOpacity>
@@ -474,7 +592,34 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     color: '#cbd5e1',
     fontSize: 13,
-    marginTop: 4
+    marginTop: 4,
+    textAlign: 'center'
+  },
+  modeSwitchRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+    backgroundColor: '#0f172a',
+    borderRadius: 20,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: '#334155'
+  },
+  modePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16
+  },
+  modePillActive: {
+    backgroundColor: '#0284c7'
+  },
+  modePillText: {
+    color: '#94a3b8',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  modePillTextActive: {
+    color: '#ffffff',
+    fontWeight: '800'
   },
   centerTargetArea: {
     flex: 1,
@@ -494,6 +639,9 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderColor: '#38bdf8'
+  },
+  cornerActive: {
+    borderColor: '#22c55e'
   },
   topLeft: {
     top: 0,
@@ -531,6 +679,31 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.9,
     shadowRadius: 5
   },
+  greenLaserLine: {
+    backgroundColor: '#22c55e',
+    shadowColor: '#22c55e',
+    height: 3
+  },
+  aimBoxLabelContainer: {
+    position: 'absolute',
+    bottom: -32,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#334155'
+  },
+  aimBoxLabel: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '600'
+  },
+  aimBoxLabelActive: {
+    color: '#4ade80',
+    fontWeight: '700'
+  },
   bottomControlsArea: {
     width: '100%',
     paddingTop: 16,
@@ -538,6 +711,55 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     backgroundColor: 'rgba(15, 23, 42, 0.7)',
     alignItems: 'center'
+  },
+  shutterButton: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0284c7',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: '#38bdf8',
+    shadowColor: '#0284c7',
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4
+  },
+  shutterButtonScanning: {
+    backgroundColor: '#15803d',
+    borderColor: '#4ade80'
+  },
+  shutterIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12
+  },
+  shutterIconCircleScanning: {
+    backgroundColor: 'rgba(0, 0, 0, 0.25)'
+  },
+  shutterIconText: {
+    fontSize: 20
+  },
+  shutterTextContainer: {
+    flex: 1
+  },
+  shutterButtonTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.3
+  },
+  shutterButtonSubtitle: {
+    color: '#e0f2fe',
+    fontSize: 11,
+    marginTop: 1
   },
   loadingBanner: {
     flexDirection: 'row',
